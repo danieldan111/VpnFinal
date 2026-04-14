@@ -1,4 +1,4 @@
-from protocol import KeyGenerator, KeySwitch, AesEncryptDecrypt, BUFFER
+from serverVpn.protocolVpn import KeyGenerator, KeySwitch, AesEncryptDecrypt, BUFFER
 import logging
 import asyncio
 from TunAdapter import create_adapter, toolkit

@@ -42,11 +42,14 @@ class KeyGenerator:
 
 
 class VpnCipher:
-    """Handles AES-GCM Encryption and Sequence Number tracking to prevent Replay Attacks."""
+    """Handles AES-GCM Encryption and an Anti-Replay Sliding Window."""
     def __init__(self, aes_key: bytes):
         self.aesgcm = AESGCM(aes_key)
         self.send_sequence = 0
-        self.highest_recv_sequence = -1
+        
+        # Sliding Window State
+        self.highest_recv_sequence = 0
+        self.replay_window = 0  # 64-bit integer acting as a bitmask
 
     def encrypt(self, msg: bytes) -> bytes:
         """Encrypts data and attaches the sequence number to the front."""
@@ -60,32 +63,47 @@ class VpnCipher:
         
         # Encrypt the payload
         ciphertext = self.aesgcm.encrypt(nonce, msg, associated_data=None)
-        
-        # Prepend the sequence bytes to the ciphertext so the receiver knows the nonce
         return seq_bytes + ciphertext
 
     def decrypt(self, encrypted_packet: bytes) -> bytes:
-        """Extracts the sequence number, checks for replay attacks, and decrypts."""
-        if len(encrypted_packet) < 8 + 16:  # Minimum size: 8 byte seq + 16 byte GCM tag
+        """Extracts sequence number, checks sliding window for replays, and decrypts."""
+        if len(encrypted_packet) < 8 + 16:  
             raise ValueError("Packet too small")
 
-        # Extract the sequence number from the front of the packet
         seq_bytes = encrypted_packet[:8]
         ciphertext = encrypted_packet[8:]
-        
         recv_sequence = struct.unpack("!Q", seq_bytes)[0]
 
-        # ANTI-REPLAY CHECK: Drop packets that are older than our highest seen sequence
+        # --- 1. SLIDING WINDOW REPLAY CHECK ---
         if recv_sequence <= self.highest_recv_sequence:
-            raise ValueError(f"Replay attack detected! Sequence {recv_sequence} is too old.")
+            diff = self.highest_recv_sequence - recv_sequence
+            # If it's older than our 64-packet window, drop it
+            if diff >= 64:
+                raise ValueError(f"Replay attack detected! Sequence {recv_sequence} is too old.")
+            
+            # Check if we have already seen this exact sequence in our window
+            if (self.replay_window & (1 << diff)) != 0:
+                raise ValueError(f"Replay attack detected! Sequence {recv_sequence} was already received.")
 
-        # Reconstruct the 12-byte nonce
+        # --- 2. DECRYPT (AUTHENTICATE) ---
+        # If an attacker tampered with the packet, this will throw an InvalidTag exception
+        # before we ever update our sequence window!
         nonce = b'\x00\x00\x00\x00' + seq_bytes
-        
-        # Decrypt (will throw InvalidTag exception if tampered with)
         plaintext = self.aesgcm.decrypt(nonce, ciphertext, associated_data=None)
         
-        # Update the highest sequence we've seen
-        self.highest_recv_sequence = recv_sequence
-        
+        # --- 3. UPDATE WINDOW (ONLY AFTER AUTHENTICATION SUCCESS) ---
+        if recv_sequence > self.highest_recv_sequence:
+            diff = recv_sequence - self.highest_recv_sequence
+            if diff < 64:
+                # Shift the window and add the new packet
+                self.replay_window = (self.replay_window << diff) | 1
+            else:
+                # We jumped too far ahead, reset the window
+                self.replay_window = 1
+            self.highest_recv_sequence = recv_sequence
+        else:
+            # It's an out-of-order packet within the window. Mark its specific bit as received.
+            diff = self.highest_recv_sequence - recv_sequence
+            self.replay_window |= (1 << diff)
+
         return plaintext

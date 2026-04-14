@@ -3,7 +3,7 @@ import threading
 from protocol import SecureSocket
 from gui import VPNClientApp
 
-ADDR = ("127.0.0.1", 8000)
+ADDR = ("79.177.161.218", 8000)
 
 def connection_worker(app):
     """Handles network connection in the background so the GUI doesn't freeze."""

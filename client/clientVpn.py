@@ -36,10 +36,9 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
     def __init__(self, loop):
         self.loop = loop
         self.transport = None
-        
-        # --- NEW STATE GUARDS ---
         self.handshake_done = False
         self.tun_started = False
+        self.packet_count = 0
 
     def connection_made(self, transport):
         self.transport = transport
@@ -87,6 +86,13 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
                 return
             try:
                 plaintext = vpn_cipher.decrypt(data)
+                
+                # --- ADD THIS LOGIC TO PRINT EVERY 10th PACKET ---
+                self.packet_count += 1
+                if self.packet_count % 10 == 0:
+                    logging.info(f"Secure traffic flowing: {self.packet_count} packets received from server.")
+                # -------------------------------------------------
+                
                 self.loop.create_task(CLIENT_ADAPTER.write(plaintext))
             except ValueError:
                 pass  # Silently ignore duplicates

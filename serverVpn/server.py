@@ -41,6 +41,7 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
     def __init__(self, tun_adapter):
         self.tun_adapter = tun_adapter
         self.transport = None
+        self.packet_count = 0
 
     def connection_made(self, transport):
         self.transport = transport
@@ -58,7 +59,6 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
             self.transport.sendto(b"KEYE" + SERVER_PUBLIC_BYTES, addr)
             logging.info(f"Secure tunnel established with {addr}")
         
-        # 2. IP Assignment Phase (If your client requests one)
         # 2. IP Assignment Phase (If your client requests one)
         elif msg_code == b"GETI":
             if addr not in client_ciphers: return
@@ -86,14 +86,20 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
                 
             try:
                 plaintext = client_ciphers[addr].decrypt(data) 
+                
+                # --- ADD THIS LOGIC TO PRINT EVERY 10th PACKET ---
+                self.packet_count += 1
+                if self.packet_count % 10 == 0:
+                    logging.info(f"[{addr}] Secure traffic flowing: {self.packet_count} packets received. (Latest: {len(plaintext)} bytes)")
+                # -------------------------------------------------
+                
                 asyncio.create_task(self.write_to_tun(plaintext, addr))
                 
-            except ValueError as e:
-                pass
-                # logging.warning(f"Dropped bad packet from {addr}: {e}")
+            except ValueError:
+                pass  # Silently drop network duplicates
             except Exception as e:
                 logging.error(f"Decryption error from {addr}: {e}")
-
+                
     async def write_to_tun(self, plaintext, addr):
         await self.tun_adapter.write(plaintext)
 

@@ -146,7 +146,7 @@ class VPNClientApp(ctk.CTk):
         
         # -u flag forces unbuffered output so we get logs instantly
         print(f"[CLIENT] connecting to vpn server at ({target_ip}, {target_port})")
-        cmd = [sys.executable, "-u", "clientVpn/client.py", target_ip, target_port]
+        cmd = [sys.executable, "-u", "clientVpn.py", target_ip, target_port]
         
         kwargs = {
             "stdout": subprocess.PIPE,

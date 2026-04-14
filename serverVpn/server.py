@@ -59,17 +59,26 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
             logging.info(f"Secure tunnel established with {addr}")
         
         # 2. IP Assignment Phase (If your client requests one)
+        # 2. IP Assignment Phase (If your client requests one)
         elif msg_code == b"GETI":
             if addr not in client_ciphers: return
-            if IP_POOL:
+            
+            # --- NEW: Check if this client already has an IP assigned ---
+            if addr in addr_to_ip_map:
+                ip = addr_to_ip_map[addr]
+            elif IP_POOL:
                 ip = IP_POOL.pop(0)
                 ip_to_addr_map[ip] = addr
                 addr_to_ip_map[addr] = ip
-                cipher = client_ciphers[addr]
-                encrypted_ip = cipher.encrypt(ip.encode())
-                self.transport.sendto(b"IP__" + encrypted_ip, addr)
-                logging.info(f"Assigned IP {ip} to {addr}")
-        
+            else:
+                logging.warning("No IPs left in pool!")
+                return
+                
+            cipher = client_ciphers[addr]
+            encrypted_ip = cipher.encrypt(ip.encode())
+            self.transport.sendto(b"IP__" + encrypted_ip, addr)
+            logging.info(f"Assigned/Confirmed IP {ip} for {addr}")
+            
         # 3. Encrypted Data Traffic
         else:
             if addr not in client_ciphers:

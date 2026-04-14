@@ -36,6 +36,10 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
     def __init__(self, loop):
         self.loop = loop
         self.transport = None
+        
+        # --- NEW STATE GUARDS ---
+        self.handshake_done = False
+        self.tun_started = False
 
     def connection_made(self, transport):
         self.transport = transport
@@ -49,6 +53,10 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
         msg_code = data[:4]
 
         if msg_code == b"KEYE":
+            if self.handshake_done: 
+                return # Ignore duplicate UDP packets!
+            self.handshake_done = True
+            
             server_pub_bytes = data[4:]
             aes_key = KeyGenerator.derive_aes_key(CLIENT_PRIVATE_KEY, server_pub_bytes)
             vpn_cipher = VpnCipher(aes_key)
@@ -58,6 +66,10 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
             self.transport.sendto(b"GETI", SERVER_ADDR)
             
         elif msg_code == b"IP__":
+            if self.tun_started: 
+                return # Ignore duplicate IP assignments!
+            self.tun_started = True
+            
             if vpn_cipher is None: return
             try:
                 ip_bytes = vpn_cipher.decrypt(data[4:])
@@ -68,6 +80,7 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
                 self.loop.create_task(self.start_tun())
             except Exception as e:
                 logging.error(f"Error decrypting IP: {e}")
+                self.tun_started = False # Reset on failure
 
         else:
             if vpn_cipher is None or CLIENT_ADAPTER is None:
@@ -93,9 +106,15 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
                 if vpn_cipher:
                     encrypted_packet = vpn_cipher.encrypt(packet)
                     self.transport.sendto(encrypted_packet, SERVER_ADDR)
+            
+            # --- PREVENT INFINITE SPAM ---
+            except ValueError:
+                logging.error("TUN file closed. Stopping loop.")
+                break 
             except Exception as e:
                 logging.error("Error reading from TUN: %s", e)
-
+                await asyncio.sleep(1)
+                
 async def main():
     loop = asyncio.get_running_loop()
     transport, protocol = await loop.create_datagram_endpoint(

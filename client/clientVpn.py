@@ -89,7 +89,7 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
                 
                 # --- ADD THIS LOGIC TO PRINT EVERY 10th PACKET ---
                 self.packet_count += 1
-                if self.packet_count % 10 == 0:
+                if self.packet_count % 1000 == 0:
                     logging.info(f"Secure traffic flowing: {self.packet_count} packets received from server.")
                 # -------------------------------------------------
                 
@@ -98,7 +98,7 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
                 pass  # Silently ignore duplicates
             except Exception as e:
                 logging.error(f"Decryption error: {e}")
-                
+
     async def start_tun(self):
         global CLIENT_ADAPTER
         CLIENT_ADAPTER = await create_adapter(ADDRESS, NAME)

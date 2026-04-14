@@ -89,7 +89,7 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
                 
                 # --- ADD THIS LOGIC TO PRINT EVERY 10th PACKET ---
                 self.packet_count += 1
-                if self.packet_count % 10 == 0:
+                if self.packet_count % 1000 == 0:
                     logging.info(f"[{addr}] Secure traffic flowing: {self.packet_count} packets received. (Latest: {len(plaintext)} bytes)")
                 # -------------------------------------------------
                 
@@ -99,7 +99,7 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
                 pass  # Silently drop network duplicates
             except Exception as e:
                 logging.error(f"Decryption error from {addr}: {e}")
-                
+
     async def write_to_tun(self, plaintext, addr):
         await self.tun_adapter.write(plaintext)
 

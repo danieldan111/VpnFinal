@@ -78,7 +78,7 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
             encrypted_ip = cipher.encrypt(ip.encode())
             self.transport.sendto(b"IP__" + encrypted_ip, addr)
             logging.info(f"Assigned/Confirmed IP {ip} for {addr}")
-            
+
         # 3. Encrypted Data Traffic
         else:
             if addr not in client_ciphers:
@@ -89,7 +89,8 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
                 asyncio.create_task(self.write_to_tun(plaintext, addr))
                 
             except ValueError as e:
-                logging.warning(f"Dropped bad packet from {addr}: {e}")
+                pass
+                # logging.warning(f"Dropped bad packet from {addr}: {e}")
             except Exception as e:
                 logging.error(f"Decryption error from {addr}: {e}")
 

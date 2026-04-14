@@ -88,9 +88,11 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
             try:
                 plaintext = vpn_cipher.decrypt(data)
                 self.loop.create_task(CLIENT_ADAPTER.write(plaintext))
+            except ValueError:
+                pass  # Silently ignore duplicates
             except Exception as e:
                 logging.error(f"Decryption error: {e}")
-
+                
     async def start_tun(self):
         global CLIENT_ADAPTER
         CLIENT_ADAPTER = await create_adapter(ADDRESS, NAME)
@@ -114,7 +116,7 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
             except Exception as e:
                 logging.error("Error reading from TUN: %s", e)
                 await asyncio.sleep(1)
-                
+
 async def main():
     loop = asyncio.get_running_loop()
     transport, protocol = await loop.create_datagram_endpoint(

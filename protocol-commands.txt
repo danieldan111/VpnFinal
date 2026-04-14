@@ -1,0 +1,6 @@
+client side:
+    login: LGIN:username:password
+    register: REGI:username:password
+
+
+server side:

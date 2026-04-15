@@ -244,6 +244,7 @@ def start_server():
             break
 
 if __name__ == "__main__":
+    # add_server("node_02", "Sweden, Stockholm")
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((HOST, PORT))
     start_server()

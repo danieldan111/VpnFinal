@@ -19,7 +19,7 @@ server_lock = threading.Lock() # Lock for the VPN servers list
 active_sessions = {}   # username -> addr
 available_servers = {} # server_name -> {"addr": addr, "display_name": name, "load": string}
 
-# ---------------- Database Setup ----------------
+#db funcs:
 def init_db():
     if not os.path.exists(DB_FILE):
         with db_lock:
@@ -46,7 +46,7 @@ def init_db():
                 conn.commit()
         print("[DB] Database created and initialized with dummy VPN node.")
 
-# --- Database Helper Functions ---
+
 def add_user(username, password):
     hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     with db_lock:
@@ -80,7 +80,7 @@ def check_vpn_server(server_name):
         return True, row[0]
     return False, None
 
-# ---------------- Core Logic Functions ----------------
+#logic funcs:
 def login(data, addr):
     username = data.get("username")
     password = data.get("password")
@@ -118,10 +118,7 @@ def logoff(username, addr):
 def vpn_server_login(data, addr):
     server_name = data.get("server_name")
     vpn_port = data.get("port", 50505) 
-    
-    # Try to get the IP from the JSON payload first. 
-    # If it's not there, fallback to the socket IP (addr[0]).
-    client_ip = data.get("host", addr[0])                
+    client_ip = addr[0]                
 
     if not server_name:
          return {"cmd": "EROR", "msg": "Missing server name"}
@@ -130,7 +127,7 @@ def vpn_server_login(data, addr):
     if is_valid:
         with server_lock:
             available_servers[server_name] = {
-                "host": client_ip,            # Save the manually advertised IP
+                "host": client_ip,            
                 "port": vpn_port,             
                 "display_name": display_name,
                 "load": "12%"                 
@@ -152,7 +149,7 @@ def get_server_list():
         ]
     return {"cmd": "SRVS", "servers": server_list}
 
-# ---------------- Command Dispatcher ----------------
+#cmds:
 def handle_lgin(data, addr, user, vpn_node):
     resp = login(data, addr)
     new_user = data.get("username") if resp.get("cmd") == "CNFM" else user
@@ -185,7 +182,7 @@ COMMANDS = {
     "LIST": handle_list
 }
 
-# ---------------- Client Handler ----------------
+#data transfer:
 def handle_client(conn, addr):
     print(f"[SERVER] Connection established from {addr}")
     try:
@@ -222,7 +219,7 @@ def handle_client(conn, addr):
         except Exception:
             break
 
-# ---------------- Server Loop ----------------
+#listen
 def start_server():
     init_db()
     server.listen(5)

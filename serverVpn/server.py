@@ -5,21 +5,21 @@ from TunAdapter import create_adapter, toolkit
 from typing import Dict, Tuple
 import socket
 from mainServerProtocol import SecureSocket
+import json
 
-SERVER_PORT = 50505
-SERVER_IP = "79.177.161.218"
+
 MASK = "/24"
 ADDRESS = "10.9.0.1" + MASK
 NAME = "vpn-tun"
 IP_POOL = [f"10.9.0.{i}" for i in range(10, 251)]
-SERVER_NAME = "node_01"
+BROKER_ADDR = ("192.168.7.5", 8080)
 
 # Modified to hold the VpnCipher objects for each client
 client_ciphers: Dict[Tuple[str, int], VpnCipher] = {} 
 ip_to_addr_map: Dict[str, Tuple[str, int]] = {}
 addr_to_ip_map = {}
 
-# Instantly generate blazing-fast X25519 keys
+# Instantly generate X25519 keys
 SERVER_PRIVATE_KEY, SERVER_PUBLIC_BYTES = KeyGenerator.generate_x25519_keypair()
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -63,7 +63,7 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
         elif msg_code == b"GETI":
             if addr not in client_ciphers: return
             
-            # --- NEW: Check if this client already has an IP assigned ---
+            #Check if this client already has an IP assigned
             if addr in addr_to_ip_map:
                 ip = addr_to_ip_map[addr]
             elif IP_POOL:
@@ -162,7 +162,13 @@ def connect_to_server(addr):
         print(f"[VPN-SERVER] Connection failed: {e}")
 
 if __name__ == "__main__":
+    #load properties:
+    with open("properties.json", 'r') as f:
+        parms = json.load(f)
+
+    SERVER_PORT = parms["port"]
+    SERVER_IP = parms["host"]
+    SERVER_NAME = parms["server_name"]
     print("[VPN-SERVER] connecting to main server")
-    # Make sure this IP matches your Broker node!
-    secure = connect_to_server(("192.168.7.5", 8000)) 
+    secure = connect_to_server(BROKER_ADDR) 
     asyncio.run(main())

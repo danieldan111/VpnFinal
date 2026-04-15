@@ -41,10 +41,17 @@ def init_db():
                 """)
                 
                 # Insert a dummy VPN server for testing
-                c.execute("INSERT INTO vpn_servers (server_name, display_name) VALUES (?, ?)", 
-                          ("node_01", "Herzliya, Israel"))
-                conn.commit()
+                add_server("node_01", "Israel, Herzliya")
+
         print("[DB] Database created and initialized with dummy VPN node.")
+
+def add_server(server_name, display_name):
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            c = conn.cursor()
+            c.execute("INSERT INTO vpn_servers (server_name, display_name) VALUES (?, ?)", 
+                                (f"{server_name}", f"{display_name}"))
+            conn.commit()
 
 
 def add_user(username, password):

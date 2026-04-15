@@ -6,6 +6,7 @@ from typing import Dict, Tuple
 import socket
 from mainServerProtocol import SecureSocket
 import json
+import time
 
 
 MASK = "/24"
@@ -42,6 +43,10 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
         self.tun_adapter = tun_adapter
         self.transport = None
         self.packet_count = 0
+        self.client_last_active = {}  #Tracks last seen time for each client
+
+        #background cleanup task
+        asyncio.create_task(self.cleanup_stale_clients())
 
     def connection_made(self, transport):
         self.transport = transport
@@ -86,13 +91,13 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
                 
             try:
                 plaintext = client_ciphers[addr].decrypt(data) 
-                
-                # --- ADD THIS LOGIC TO PRINT EVERY 10th PACKET ---
+                self.client_last_active[addr] = time.time()
+
+                #print a packet every 1000 packets
                 self.packet_count += 1
                 if self.packet_count % 1000 == 0:
                     logging.info(f"[{addr}] Secure traffic flowing: {self.packet_count} packets received. (Latest: {len(plaintext)} bytes)")
-                # -------------------------------------------------
-                
+
                 asyncio.create_task(self.write_to_tun(plaintext, addr))
                 
             except ValueError:
@@ -102,6 +107,36 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
 
     async def write_to_tun(self, plaintext, addr):
         await self.tun_adapter.write(plaintext)
+    
+    async def cleanup_stale_clients(self):
+        TIMEOUT_SECONDS = 30
+        
+        while True:
+            await asyncio.sleep(10)  # Run the sweep every 10 seconds
+            current_time = time.time()
+            stale_clients = []
+            
+            # Find all clients that have timed out
+            for addr, last_seen in list(self.client_last_active.items()):
+                if current_time - last_seen > TIMEOUT_SECONDS:
+                    stale_clients.append(addr)
+                    
+            # Disconnect them and clean up memory
+            for addr in stale_clients:
+                logging.info(f"Client {addr} timed out. Reclaiming resources.")
+                
+                # Remove their activity tracker
+                del self.client_last_active[addr]
+                
+                # Remove their cipher to stop accepting their traffic
+                if addr in client_ciphers:
+                    del client_ciphers[addr]
+                
+                # Reclaim their IP address (Adjust variable names to match your global IP lists)
+                # if addr in client_ips:
+                #     assigned_ip = client_ips[addr]
+                #     available_ips.append(assigned_ip)  # Put it back in the pool
+                #     del client_ips[addr]
 
 
 async def main():

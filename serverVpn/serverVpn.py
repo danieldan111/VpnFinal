@@ -123,7 +123,8 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
                     
             # Disconnect them and clean up memory
             for addr in stale_clients:
-                logging.info(f"Client {addr} timed out. Reclaiming resources.")
+
+                logging.info(f"Client {addr} timed out. Recycling ip: {addr_to_ip_map[addr]}.")
                 
                 # Remove their activity tracker
                 del self.client_last_active[addr]
@@ -132,11 +133,11 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
                 if addr in client_ciphers:
                     del client_ciphers[addr]
                 
-                # Reclaim their IP address (Adjust variable names to match your global IP lists)
-                # if addr in client_ips:
-                #     assigned_ip = client_ips[addr]
-                #     available_ips.append(assigned_ip)  # Put it back in the pool
-                #     del client_ips[addr]
+                #remove local ip and recycle:
+                recylcled_ip = addr_to_ip_map[addr]
+                del addr_to_ip_map[addr]
+                del ip_to_addr_map[recylcled_ip]
+                IP_POOL.insert(0, recylcled_ip)
 
 
 async def main():

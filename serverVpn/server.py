@@ -12,7 +12,7 @@ MASK = "/24"
 ADDRESS = "10.9.0.1" + MASK
 NAME = "vpn-tun"
 IP_POOL = [f"10.9.0.{i}" for i in range(10, 251)]
-BROKER_ADDR = ("192.168.7.5", 8080)
+BROKER_ADDR = ("192.168.7.5", 8000)
 
 # Modified to hold the VpnCipher objects for each client
 client_ciphers: Dict[Tuple[str, int], VpnCipher] = {} 

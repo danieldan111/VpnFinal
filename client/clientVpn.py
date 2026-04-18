@@ -50,7 +50,7 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
 
     async def check_ip_timeout(self):
         """Waits x seconds. If the IP isn't received by then, shut down."""
-        IP_TIMEOUT_SECONDS = 3 
+        IP_TIMEOUT_SECONDS = 2 
         
         await asyncio.sleep(IP_TIMEOUT_SECONDS)
         

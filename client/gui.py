@@ -171,8 +171,8 @@ class VPNClientApp(ctk.CTk):
                 daemon=True
             ).start()
 
-            # Wait 1000ms to see if it crashes before switching to ConnectedPage
-            self.after(2000, self.verify_vpn_connection, srv, show_console)
+            # Wait to see if it crashes before switching to ConnectedPage
+            self.after(3000, self.verify_vpn_connection, srv, show_console)
             
         except Exception as e:
             messagebox.showerror("Execution Error", f"Failed to execute VPN script:\n{e}")

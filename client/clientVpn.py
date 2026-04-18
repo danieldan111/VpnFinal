@@ -16,6 +16,10 @@ CLIENT_ADAPTER = None
 vpn_cipher = None
 CLIENT_PRIVATE_KEY, CLIENT_PUBLIC_BYTES = KeyGenerator.generate_x25519_keypair()
 
+
+rx_bytes_sec = 0
+tx_bytes_sec = 0
+
 def setup_route_table(interface_name, server_ip_addr):
     logging.info("Setting up client routing table...")
     toolkit.run("/usr/sbin/sysctl -w net.ipv4.ip_forward=1")
@@ -45,8 +49,9 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
 
         # Start the background monitor
         self.loop.create_task(self.monitor_connection())
-
         self.loop.create_task(self.check_ip_timeout())
+        self.loop.create_task(self.report_bandwidth())
+
 
     async def check_ip_timeout(self):
         """Waits x seconds. If the IP isn't received by then, shut down."""
@@ -65,8 +70,10 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
         logging.info("Sent GETK and Client Public Key to server...")
 
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
-        global vpn_cipher, ADDRESS, CLIENT_ADAPTER
+        global vpn_cipher, ADDRESS, CLIENT_ADAPTER, rx_bytes_sec
         
+        rx_bytes_sec += len(data)
+
         if len(data) < 4: return
         msg_code = data[:4]
 
@@ -125,10 +132,13 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
         self.loop.create_task(self.tun_to_server())
 
     async def tun_to_server(self):
+        global tx_bytes_sec
         while True:
             try:
                 packet = await CLIENT_ADAPTER.read()
                 if not packet: continue
+
+                tx_bytes_sec += len(packet)
                 
                 if vpn_cipher:
                     encrypted_packet = vpn_cipher.encrypt(packet)
@@ -154,6 +164,17 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
                 # Force exit the subprocess. 
                 # This will tell your GUI to trigger its disconnect logic.
                 os._exit(1)
+    
+    async def report_bandwidth(self):
+        global rx_bytes_sec, tx_bytes_sec
+        while True:
+            await asyncio.sleep(1)
+            # Print the stats and flush the output so the GUI gets it instantly
+            print(f"[STATS] {rx_bytes_sec},{tx_bytes_sec}", flush=True)
+            
+            # Reset counters for the next second
+            rx_bytes_sec = 0
+            tx_bytes_sec = 0
 
 async def main():
     loop = asyncio.get_running_loop()

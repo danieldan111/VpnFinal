@@ -180,10 +180,25 @@ class VPNClientApp(ctk.CTk):
     def monitor_vpn_output(self, process, debug_window):
         """Reads the subprocess output line by line in real-time."""
         for line in iter(process.stdout.readline, ''):
+            if line.startswith("[STATS]"):
+                try:
+                    # Strip the tag and newlines, then split by comma
+                    stats_str = line.replace("[STATS]", "").strip()
+                    rx_str, tx_str = stats_str.split(",")
+                    
+                    # Update the GUI safely from the background thread
+                    if "ConnectedPage" in self.frames:
+                        self.after(0, self.frames["ConnectedPage"].update_speeds, int(rx_str), int(tx_str))
+                except Exception as e:
+                    print(f"[GUI] Error parsing stats: {e}")
+                
+                continue # Skip the rest of the loop so it doesn't print to console
+            
             if debug_window and debug_window.winfo_exists():
                 # Safely tell Tkinter to update the UI from this background thread
                 self.after(0, debug_window.write_log, line)
             
+
             # Also print to your IDE terminal just in case
             print(f"[VPN Client] {line}", end="")
             
@@ -533,6 +548,12 @@ class ConnectedPage(BasePage):
                                         fg_color="#C62828", hover_color="#B71C1C", width=100)
         self.logoff_btn.pack(pady=(5, 10), padx=15)
 
+        self.dl_label = ctk.CTkLabel(self, text="Download: 0.00 KB/s", font=("Arial", 16, "bold"), text_color="#2ecc71")
+        self.dl_label.pack(pady=(20, 5))
+        
+        self.ul_label = ctk.CTkLabel(self, text="Upload: 0.00 KB/s", font=("Arial", 16, "bold"), text_color="#3498db")
+        self.ul_label.pack(pady=5)
+
         # --- Center Dashboard Content ---
         self.center_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.center_frame.pack(expand=True)
@@ -550,6 +571,20 @@ class ConnectedPage(BasePage):
                                             font=("Arial", 18, "bold"), fg_color="#C62828", hover_color="#B71C1C",
                                             command=self.controller.stop_vpn)
         self.disconnect_btn.pack(pady=30)
+
+
+    def update_speeds(self, rx_bytes, tx_bytes):
+        self.dl_label.configure(text=f"Download: {self.format_speed(rx_bytes)}")
+        self.ul_label.configure(text=f"Upload: {self.format_speed(tx_bytes)}")
+
+    def format_speed(self, bytes_per_sec):
+        """Helper to convert bytes into readable KB/s or MB/s"""
+        if bytes_per_sec < 1024:
+            return f"{bytes_per_sec} B/s"
+        elif bytes_per_sec < 1048576:
+            return f"{bytes_per_sec / 1024:.2f} KB/s"
+        else:
+            return f"{bytes_per_sec / 1048576:.2f} MB/s"
 
     def toggle_menu(self):
         if self.menu_visible:

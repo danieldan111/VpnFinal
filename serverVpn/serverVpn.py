@@ -7,6 +7,7 @@ import socket
 from mainServerProtocol import SecureSocket
 import json
 import time
+import os
 
 
 MASK = "/24"
@@ -140,10 +141,15 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
                 IP_POOL.insert(0, recylcled_ip)
 
 
-async def main():
+async def main(secure_socket):
     setup_route_table()
     tun_adapter = await create_adapter(ADDRESS, NAME)
     
+    if secure_socket:
+        asyncio.create_task(monitor_broker_connection(secure_socket))
+    else:
+        logging.warning("Starting VPN Server without Broker connection!")
+
     loop = asyncio.get_running_loop()
     transport, protocol = await loop.create_datagram_endpoint(
         lambda: ServerDatagramProtocol(tun_adapter),
@@ -174,6 +180,33 @@ async def main():
         if transport: transport.close()
         cleanup_route_table()
         logging.info("Server shutdown complete.")
+
+
+async def monitor_broker_connection(secure_socket):
+    loop = asyncio.get_running_loop()
+    logging.info("Broker monitor started.")
+    
+    while True:
+        try:
+            # Safely run the blocking recv_json in a background thread
+            data = await loop.run_in_executor(None, secure_socket.recv_json)
+            
+            # If recv_json returns empty/None, the socket closed cleanly
+            if not data:
+                logging.error("Broker closed the connection.")
+                break
+                
+            # (Optional: If the broker ever sends real-time commands, handle them here)
+            
+        except Exception as e:
+            # If the socket crashes or loses internet, it throws an error
+            logging.error(f"Lost connection to Broker unexpectedly: {e}")
+            break
+
+    # If the loop breaks, the broker is dead. Trigger graceful shutdown!
+    logging.error("Initiating VPN Server self-destruct...")
+    os._exit(1)
+
 
 def connect_to_server(addr):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -207,4 +240,4 @@ if __name__ == "__main__":
     SERVER_NAME = parms["server_name"]
     print("[VPN-SERVER] connecting to main server")
     secure = connect_to_server(BROKER_ADDR) 
-    asyncio.run(main())
+    asyncio.run(main(secure))

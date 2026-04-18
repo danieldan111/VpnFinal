@@ -46,6 +46,19 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
         # Start the background monitor
         self.loop.create_task(self.monitor_connection())
 
+        self.loop.create_task(self.check_ip_timeout())
+
+    async def check_ip_timeout(self):
+        """Waits x seconds. If the IP isn't received by then, shut down."""
+        IP_TIMEOUT_SECONDS = 3 
+        
+        await asyncio.sleep(IP_TIMEOUT_SECONDS)
+        
+        # If the TUN hasn't started after 10 seconds, the IP assignment failed
+        if not self.tun_started:
+            logging.error(f"Failed to receive an IP address within {IP_TIMEOUT_SECONDS} seconds. Aborting!")
+            os._exit(1)
+
     def connection_made(self, transport):
         self.transport = transport
         self.transport.sendto(b"GETK" + CLIENT_PUBLIC_BYTES, SERVER_ADDR)

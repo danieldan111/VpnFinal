@@ -4,6 +4,8 @@ import asyncio
 import logging
 import sys
 from typing import Tuple, Dict
+import time
+import os
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -39,6 +41,10 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
         self.handshake_done = False
         self.tun_started = False
         self.packet_count = 0
+        self.last_seen_server = time.time()
+
+        # Start the background monitor
+        self.loop.create_task(self.monitor_connection())
 
     def connection_made(self, transport):
         self.transport = transport
@@ -86,12 +92,12 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
                 return
             try:
                 plaintext = vpn_cipher.decrypt(data)
-                
-                # --- ADD THIS LOGIC TO PRINT EVERY 10th PACKET ---
+
+                self.last_seen_server = time.time()
+
                 self.packet_count += 1
                 if self.packet_count % 1000 == 0:
                     logging.info(f"Secure traffic flowing: {self.packet_count} packets received from server.")
-                # -------------------------------------------------
                 
                 self.loop.create_task(CLIENT_ADAPTER.write(plaintext))
             except ValueError:
@@ -122,6 +128,22 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
             except Exception as e:
                 logging.error("Error reading from TUN: %s", e)
                 await asyncio.sleep(1)
+    
+    async def monitor_connection(self):
+        TIMEOUT_SECONDS = 20
+        
+        while True:
+            await asyncio.sleep(10)  # Check every 10 seconds
+            
+            if time.time() - self.last_seen_server > TIMEOUT_SECONDS:
+                logging.error("Connection to server lost! Shutting down tunnel...")
+                
+                # Restore the user's normal internet routing
+                restore_routing_table(CLIENT_SERVER_IP_ADDR)
+                
+                # Force exit the subprocess. 
+                # This will tell your GUI to trigger its disconnect logic.
+                os._exit(1)
 
 async def main():
     loop = asyncio.get_running_loop()

@@ -172,7 +172,7 @@ class VPNClientApp(ctk.CTk):
             ).start()
 
             # Wait 1000ms to see if it crashes before switching to ConnectedPage
-            self.after(1000, self.verify_vpn_connection, srv, show_console)
+            self.after(2000, self.verify_vpn_connection, srv, show_console)
             
         except Exception as e:
             messagebox.showerror("Execution Error", f"Failed to execute VPN script:\n{e}")
@@ -200,6 +200,9 @@ class VPNClientApp(ctk.CTk):
             print("[GUI] VPN Process verified. Switching to Connected dashboard.")
             self.connected_server = srv
             self.show_frame("ConnectedPage")
+
+            self.check_vpn_status()
+
         else:
             msg = f"The VPN script crashed quickly (Exit Code {return_code})."
             if show_console:
@@ -213,6 +216,27 @@ class VPNClientApp(ctk.CTk):
             
             if "VPNPage" in self.frames:
                 self.frames["VPNPage"].fetch_servers()
+
+    def check_vpn_status(self):
+        """Continuously checks if the background VPN process died unexpectedly."""
+        # If we aren't tracking a process anymore (user clicked disconnect), stop checking.
+        if self.active_vpn_process is None:
+            return
+            
+        return_code = self.active_vpn_process.poll()
+        
+        if return_code is not None:
+            # The process died! (Timeout triggered SIGINT, or the server crashed)
+            print(f"[GUI] VPN Process terminated unexpectedly (Code {return_code}).")
+            
+            # Optional: Tell the user what happened
+            messagebox.showwarning("VPN Disconnected", "The connection to the VPN server was lost.")
+            
+            # Your existing stop_vpn method handles the rest (cleaning up and switching to VPNPage)
+            self.stop_vpn(switch_page=True)
+        else:
+            # The process is still running smoothly. Check again in 1000ms (1 second).
+            self.after(1000, self.check_vpn_status)
 
     def stop_vpn(self, switch_page=True):
         """Kills the running VPN client subprocess."""

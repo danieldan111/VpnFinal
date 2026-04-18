@@ -138,9 +138,6 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
             if time.time() - self.last_seen_server > TIMEOUT_SECONDS:
                 logging.error("Connection to server lost! Shutting down tunnel...")
                 
-                # Restore the user's normal internet routing
-                restore_routing_table(CLIENT_SERVER_IP_ADDR)
-                
                 # Force exit the subprocess. 
                 # This will tell your GUI to trigger its disconnect logic.
                 os._exit(1)

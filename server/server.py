@@ -126,7 +126,7 @@ def vpn_server_login(data, addr):
     server_name = data.get("server_name")
     vpn_port = data.get("port", 50505) 
     #extract ip from json, if not there use addr of the connection
-    client_ip = data.get("host", addr[0])                
+    client_ip = addr[0]               
 
     if not server_name:
          return {"cmd": "EROR", "msg": "Missing server name"}

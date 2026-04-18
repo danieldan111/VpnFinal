@@ -185,8 +185,8 @@ def connect_to_server(addr):
         payload = {
             "cmd": "SLGN", 
             "server_name": SERVER_NAME, 
-            "port": SERVER_PORT,
-            "host": SERVER_IP 
+            "port": SERVER_PORT
+            # "host": SERVER_IP 
         }
         
         secure.send_json(payload)
@@ -203,7 +203,7 @@ if __name__ == "__main__":
         parms = json.load(f)
 
     SERVER_PORT = parms["port"]
-    SERVER_IP = parms["host"]
+    # SERVER_IP = parms["host"]
     SERVER_NAME = parms["server_name"]
     print("[VPN-SERVER] connecting to main server")
     secure = connect_to_server(BROKER_ADDR) 

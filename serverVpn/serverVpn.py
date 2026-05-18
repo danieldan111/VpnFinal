@@ -4,7 +4,7 @@ import asyncio
 from TunAdapter import create_adapter, toolkit
 from typing import Dict, Tuple
 import socket
-from mainServerProtocol import SecureSocket
+from protocol import SecureSocket
 import json
 import time
 import os

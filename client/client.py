@@ -6,10 +6,9 @@ import sys
 
 # ADDR = ("", 8000)
 
-def connection_worker(app):
+def connection_worker(app, ADDR):
     """Handles network connection in the background so the GUI doesn't freeze."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    global ADDR
     try:
         sock.connect(ADDR)
         secure = SecureSocket(sock)
@@ -47,7 +46,7 @@ def main():
     app = VPNClientApp()
     
     # Start background thread to connect and listen
-    conn_thread = threading.Thread(target=connection_worker, args=(app,), daemon=True)
+    conn_thread = threading.Thread(target=connection_worker, args=(app,ADDR), daemon=True)
     conn_thread.start()
 
     # Run the GUI mainloop

@@ -8,6 +8,7 @@ from protocol import SecureSocket
 import json
 import time
 import os
+import sys
 
 
 MASK = "/24"
@@ -307,6 +308,15 @@ def connect_to_server(addr):
         print(f"[VPN-SERVER] Connection failed: {e}")
 
 if __name__ == "__main__":
+    if (sys.argv) != 3:
+        print("Usage: python serverVpn.py <IP> <PORT>")
+        sys.exit(1)
+
+    ip = sys.argv[1]
+    port = int(sys.argv[2])
+
+    BROKER_ADDR[0] = ip
+    BROKER_ADDR[1] = port
     #load properties:
     with open("properties.json", 'r') as f:
         parms = json.load(f)

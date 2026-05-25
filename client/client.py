@@ -2,6 +2,7 @@ import socket
 import threading
 from protocol import SecureSocket
 from gui import VPNClientApp
+import sys
 
 ADDR = ("", 8000)
 
@@ -32,6 +33,16 @@ def connection_worker(app):
         app.after(0, app.connection_lost)
 
 def main():
+    if (sys.argv) != 3:
+        print("Usage: python client.py <IP> <PORT>")
+        sys.exit(1)
+    
+    ip = sys.argv[1]
+    port = int(sys.argv[2])
+
+    ADDR[0] = ip
+    ADDR[1] = port
+
     # Launch GUI immediately
     app = VPNClientApp()
     

@@ -155,8 +155,8 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
         logging.info(f"[{addr}] Authenticating user '{username}' with Broker...")
         
         # Call our multiplexed async verification function
-        is_valid = await verify_client_session(secure_socket, username, token)
-        
+        is_valid = await verify_client_session(secure_socket, username, token, addr) 
+                           
         if not is_valid:
             logging.warning(f"[{addr}] Authentication DENIED for user '{username}'. Dropping packet!")
             return

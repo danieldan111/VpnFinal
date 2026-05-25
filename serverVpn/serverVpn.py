@@ -42,35 +42,35 @@ def cleanup_route_table():
     toolkit.run("iptables -D FORWARD -s 10.9.0.0/24 -j ACCEPT", check=False)
     toolkit.run("iptables -D FORWARD -d 10.9.0.0/24 -j ACCEPT", check=False)
 
-async def verify_client_session(secure_sock, username, token):
+async def verify_client_session(secure_sock, username, token, addr):
     loop = asyncio.get_running_loop()
-    
-    # Ensure clean formatting
     username = str(username).strip()
     
-    # Generate the Future object
+    # Unique compound key tracking this specific client's network endpoint
+    tracking_key = (username, addr)
+    
     fut = loop.create_future()
-    pending_verifications[username] = fut
+    pending_verifications[tracking_key] = fut
     
     try:
         payload = {"cmd": "VTOK", "username": username, "token": token}
-        logging.info(f"Sending VTOK verification request to Broker for '{username}'")
+        logging.info(f"[{addr}] Sending VTOK verification request to Broker for '{username}'")
         
         await loop.run_in_executor(None, secure_sock.send_json, payload)
         
-        # Await response
+        # Await response specific to this socket connection call
         response = await asyncio.wait_for(fut, timeout=5.0)
         return response.get("verified") is True
         
     except asyncio.TimeoutError:
-        logging.error(f"Timeout waiting for Broker to verify user '{username}'")
+        logging.error(f"[{addr}] Timeout waiting for Broker to verify user '{username}'")
         return False
     except Exception as e:
-        logging.error(f"Exception during session verification for '{username}': {e}")
+        logging.error(f"[{addr}] Exception during session verification for '{username}': {e}")
         return False
     finally:
-        # Clean up memory
-        pending_verifications.pop(username, None)
+        # Clean up memory securely using the compound key
+        pending_verifications.pop(tracking_key, None)
 
 
 class ServerDatagramProtocol(asyncio.DatagramProtocol):
@@ -261,15 +261,19 @@ async def monitor_broker_connection(secure_sock):
             action = data.get("action")
             
             if cmd == "CNFM" and action == "VTOK":
-                # Strip spaces to ensure strings match accurately
                 username = str(data.get("username", "")).strip()
                 logging.info(f"Received VTOK validation from Broker for user: '{username}'")
                 
-                if username in pending_verifications:
-                    # Resolve the waiting future
-                    pending_verifications[username].set_result(data)
-                else:
-                    logging.warning(f"User '{username}' not found in active pending dictionary! Current keys: {list(pending_verifications.keys())}")
+                # Look for an active future matching this username
+                resolved = False
+                for (pending_user, addr), fut in list(pending_verifications.items()):
+                    if pending_user == username and not fut.done():
+                        fut.set_result(data)
+                        resolved = True
+                        break # Resolve one waiting client instance per broker response
+                
+                if not resolved:
+                    logging.warning(f"User '{username}' response received but no matching pending future was active.")
                 continue
                 
         except Exception as e:

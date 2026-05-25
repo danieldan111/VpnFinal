@@ -73,9 +73,9 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
         # Payload structure: [4 bytes CMD] + [32 bytes Public Key] + [N bytes JSON Auth Data]
         payload = b"GETK" + CLIENT_PUBLIC_BYTES + auth_data
         
-        #self.transport.sendto(payload, SERVER_ADDR)
+        self.transport.sendto(payload, SERVER_ADDR)
         logging.info(f"Sent GETK, Public Key, and Auth Token for user '{USERNAME}'...")
-        self.transport.sendto(b"GETK" + CLIENT_PUBLIC_BYTES, SERVER_ADDR)
+        # self.transport.sendto(b"GETK" + CLIENT_PUBLIC_BYTES, SERVER_ADDR)
         
 
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):

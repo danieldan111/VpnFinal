@@ -15,7 +15,7 @@ MASK = "/24"
 ADDRESS = "10.9.0.1" + MASK
 NAME = "vpn-tun"
 IP_POOL = [f"10.9.0.{i}" for i in range(10, 251)]
-BROKER_ADDR = ("192.168.7.5", 8000)
+# BROKER_ADDR = ("192.168.7.5", 8000)
 
 # Modified to hold the VpnCipher objects for each client
 client_ciphers: Dict[Tuple[str, int], VpnCipher] = {} 
@@ -315,8 +315,7 @@ if __name__ == "__main__":
     ip = sys.argv[1]
     port = int(sys.argv[2])
 
-    BROKER_ADDR[0] = ip
-    BROKER_ADDR[1] = port
+    BROKER_ADDR = (ip, port)
     #load properties:
     with open("properties.json", 'r') as f:
         parms = json.load(f)

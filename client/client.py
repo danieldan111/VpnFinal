@@ -4,11 +4,12 @@ from protocol import SecureSocket
 from gui import VPNClientApp
 import sys
 
-ADDR = ("", 8000)
+# ADDR = ("", 8000)
 
 def connection_worker(app):
     """Handles network connection in the background so the GUI doesn't freeze."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    global ADDR
     try:
         sock.connect(ADDR)
         secure = SecureSocket(sock)
@@ -40,8 +41,7 @@ def main():
     ip = sys.argv[1]
     port = int(sys.argv[2])
 
-    ADDR[0] = ip
-    ADDR[1] = port
+    ADDR = (ip, port)
 
     # Launch GUI immediately
     app = VPNClientApp()

@@ -134,17 +134,25 @@ def logoff(username, addr):
 def verify_token(data, addr):
     v_user = data.get("username")
     v_token = data.get("token")
-
     if not v_user or not v_token:
-        return {"cmd": "EROR", "msg": "Missing username or token"}
+        return {"cmd": "EROR", "msg": "Missing username or token", "verified": False}
 
     with session_lock:
         session = active_sessions.get(v_user)
-        # Check if user is active and the token matches
+        # Verify token match
         if session and session.get("token") == v_token:
-            return {"cmd": "CNFM", "action": "VTOK", "verified": True}
+            # CRITICAL: Include 'username' explicitly in the success response
+            return {
+                "cmd": "CNFM", 
+                "action": "VTOK", 
+                "username": v_user, 
+                "verified": True
+            }
         else:
-            return {"cmd": "EROR", "msg": "Invalid or expired session token", "verified": False}
+            return {"cmd": "EROR", "msg": "Invalid session token", "verified": False, "username": v_user}
+
+def handle_vtok(data, addr, user, vpn_node):
+    return verify_token(data, addr), user, vpn_node
 
 def handle_vtok(data, addr, user, vpn_node):
     return verify_token(data, addr), user, vpn_node

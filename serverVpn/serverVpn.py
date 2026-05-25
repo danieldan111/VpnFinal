@@ -45,17 +45,20 @@ def cleanup_route_table():
 async def verify_client_session(secure_sock, username, token):
     loop = asyncio.get_running_loop()
     
-    # Create an async placeholder that resolves when the monitor loop receives the answer
+    # Ensure clean formatting
+    username = str(username).strip()
+    
+    # Generate the Future object
     fut = loop.create_future()
     pending_verifications[username] = fut
     
     try:
         payload = {"cmd": "VTOK", "username": username, "token": token}
+        logging.info(f"Sending VTOK verification request to Broker for '{username}'")
         
-        # Safely send the JSON payload without blocking the event loop
         await loop.run_in_executor(None, secure_sock.send_json, payload)
         
-        # Await the response asynchronously with a 5-second timeout dropguard
+        # Await response
         response = await asyncio.wait_for(fut, timeout=5.0)
         return response.get("verified") is True
         
@@ -63,10 +66,10 @@ async def verify_client_session(secure_sock, username, token):
         logging.error(f"Timeout waiting for Broker to verify user '{username}'")
         return False
     except Exception as e:
-        logging.error(f"Exception during session verification: {e}")
+        logging.error(f"Exception during session verification for '{username}': {e}")
         return False
     finally:
-        # Clean up the routing dictionary regardless of success or failure
+        # Clean up memory
         pending_verifications.pop(username, None)
 
 
@@ -249,20 +252,24 @@ async def monitor_broker_connection(secure_sock):
     
     while True:
         try:
-            # Offload the blocking recv_json to an executor to avoid freezing the event loop
             data = await loop.run_in_executor(None, secure_sock.recv_json)
             if not data:
+                logging.warning("Broker closed connection.")
                 break
                 
             cmd = data.get("cmd")
             action = data.get("action")
             
-            # Route authentication responses to the waiting future
             if cmd == "CNFM" and action == "VTOK":
-                username = data.get("username")
+                # Strip spaces to ensure strings match accurately
+                username = str(data.get("username", "")).strip()
+                logging.info(f"Received VTOK validation from Broker for user: '{username}'")
+                
                 if username in pending_verifications:
-                    # Wake up the suspended verify_client_session function with the data
+                    # Resolve the waiting future
                     pending_verifications[username].set_result(data)
+                else:
+                    logging.warning(f"User '{username}' not found in active pending dictionary! Current keys: {list(pending_verifications.keys())}")
                 continue
                 
         except Exception as e:

@@ -501,8 +501,8 @@ class VPNPage(BasePage):
             name_lbl = ctk.CTkLabel(row, text=srv.get("name", "Unknown Server"), font=("Arial", 16, "bold"))
             name_lbl.pack(side="left", padx=15, pady=15)
             
-            load_lbl = ctk.CTkLabel(row, text=f"Load: {srv.get('load', '0%')}", text_color="gray")
-            load_lbl.pack(side="left", padx=20)
+            # load_lbl = ctk.CTkLabel(row, text=f"Load: {srv.get('load', '0%')}", text_color="gray")
+            # load_lbl.pack(side="left", padx=20)
             
             conn_btn = ctk.CTkButton(row, text="Connect", width=80, 
                                      fg_color="#2E7D32", hover_color="#1B5E20",

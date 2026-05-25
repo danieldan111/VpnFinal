@@ -39,6 +39,19 @@ def cleanup_route_table():
     toolkit.run("iptables -D FORWARD -s 10.9.0.0/24 -j ACCEPT", check=False)
     toolkit.run("iptables -D FORWARD -d 10.9.0.0/24 -j ACCEPT", check=False)
 
+def verify_client_session(username, token):
+    """Contacts the Broker over TCP to verify the client's session token."""
+    try:
+        global secure
+        # Send the verification command
+        secure.send_json({"cmd": "VTOK", "username": username, "token": token})
+        res = secure.recv_json()
+        
+        return res.get("verified") is True
+    except Exception as e:
+        logging.error(f"Broker backend authentication failed: {e}")
+        return False
+
 class ServerDatagramProtocol(asyncio.DatagramProtocol):
     def __init__(self, tun_adapter):
         self.tun_adapter = tun_adapter
@@ -59,11 +72,7 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
 
         # 1. Handshake Phase
         if msg_code == b"GETK":
-            client_pub_bytes = data[4:]
-            aes_key = KeyGenerator.derive_aes_key(SERVER_PRIVATE_KEY, client_pub_bytes)
-            client_ciphers[addr] = VpnCipher(aes_key)
-            self.transport.sendto(b"KEYE" + SERVER_PUBLIC_BYTES, addr)
-            logging.info(f"Secure tunnel established with {addr}")
+            asyncio.create_task(self.handle_getk(data, addr))
         
         # 2. IP Assignment Phase (If your client requests one)
         elif msg_code == b"GETI":
@@ -105,6 +114,38 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
                 pass  # Silently drop network duplicates
             except Exception as e:
                 logging.error(f"Decryption error from {addr}: {e}")
+
+    async def handle_getk(self, data: bytes, addr: Tuple[str, int]):
+        # Ensure we have at least 4 bytes CMD + 32 bytes Public Key
+        if len(data) < 36: 
+            return 
+            
+        client_pub_bytes = data[4:36]
+        
+        # Extract the JSON authentication payload
+        try:
+            auth_data = json.loads(data[36:].decode('utf-8'))
+            username = auth_data.get("u")
+            token = auth_data.get("t")
+        except Exception as e:
+            logging.warning(f"[{addr}] Invalid auth payload format. Dropping connection. Error: {e}")
+            return
+            
+        logging.info(f"[{addr}] Authenticating user '{username}' with Broker...")
+        
+        # Ask the Broker if the token is valid (runs in background thread to prevent freezing)
+        loop = asyncio.get_running_loop()
+        is_valid = await loop.run_in_executor(None, verify_client_session, username, token)
+        
+        if not is_valid:
+            logging.warning(f"[{addr}] Authentication DENIED for user '{username}'. Dropping packet!")
+            return
+            
+        # If valid, proceed with cryptographic handshake
+        aes_key = KeyGenerator.derive_aes_key(SERVER_PRIVATE_KEY, client_pub_bytes)
+        client_ciphers[addr] = VpnCipher(aes_key)
+        self.transport.sendto(b"KEYE" + SERVER_PUBLIC_BYTES, addr)
+        logging.info(f"[{addr}] Secure tunnel established for user '{username}'")
 
     async def write_to_tun(self, plaintext, addr):
         await self.tun_adapter.write(plaintext)

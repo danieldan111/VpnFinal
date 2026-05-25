@@ -6,6 +6,7 @@ import sys
 from typing import Tuple, Dict
 import time
 import os
+import json
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -66,8 +67,16 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
 
     def connection_made(self, transport):
         self.transport = transport
+        # Serialize the username and token into a JSON string and encode to bytes
+        auth_data = json.dumps({"u": USERNAME, "t": TOKEN}).encode('utf-8')
+        
+        # Payload structure: [4 bytes CMD] + [32 bytes Public Key] + [N bytes JSON Auth Data]
+        payload = b"GETK" + CLIENT_PUBLIC_BYTES + auth_data
+        
+        #self.transport.sendto(payload, SERVER_ADDR)
+        logging.info(f"Sent GETK, Public Key, and Auth Token for user '{USERNAME}'...")
         self.transport.sendto(b"GETK" + CLIENT_PUBLIC_BYTES, SERVER_ADDR)
-        logging.info("Sent GETK and Client Public Key to server...")
+        
 
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
         global vpn_cipher, ADDRESS, CLIENT_ADAPTER, rx_bytes_sec
@@ -195,12 +204,14 @@ async def main():
         sys.exit(0)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python clientVpn.py <IP> <PORT>")
+    if len(sys.argv) != 5:
+        print("Usage: python clientVpn.py <IP> <PORT> <USERNAME> <TOKEN>")
         sys.exit(1)
         
     target_ip = sys.argv[1]
     target_port = int(sys.argv[2])
+    USERNAME = sys.argv[3]
+    TOKEN = sys.argv[4]
     SERVER_ADDR = (target_ip, target_port)
     CLIENT_SERVER_IP_ADDR = SERVER_ADDR[0]
     

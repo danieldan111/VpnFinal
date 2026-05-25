@@ -4,6 +4,8 @@ import sqlite3
 import os
 import bcrypt
 from protocol import SecureSocket
+import secrets
+
 
 HOST = "0.0.0.0"
 PORT = 8000
@@ -99,9 +101,16 @@ def login(data, addr):
             return {"cmd": "EROR", "msg": "User already logged in"}
 
     if check_user(username, password):
+        # Generate a secure 32-character hex token
+        session_token = secrets.token_hex(16)
+        
         with session_lock:
-            active_sessions[username] = addr
-        return {"cmd": "CNFM", "action": "LGIN", "username": username}
+            # Store BOTH the address and the token in the session tracker
+            active_sessions[username] = {"addr": addr, "token": session_token}
+            
+        print(f"[BROKER] User '{username}' logged in. Token generated.")
+        # Send the token back to the client so they can use it for the VPN Node
+        return {"cmd": "CNFM", "action": "LGIN", "username": username, "token": session_token}
     else:
         return {"cmd": "EROR", "msg": "Invalid credentials"}
 
@@ -121,6 +130,24 @@ def logoff(username, addr):
             del active_sessions[username]
             return {"cmd": "CNFM", "action": "LOGF"}
     return {"cmd": "EROR", "msg": "Logoff failed"}
+
+def verify_token(data, addr):
+    v_user = data.get("username")
+    v_token = data.get("token")
+
+    if not v_user or not v_token:
+        return {"cmd": "EROR", "msg": "Missing username or token"}
+
+    with session_lock:
+        session = active_sessions.get(v_user)
+        # Check if user is active and the token matches
+        if session and session.get("token") == v_token:
+            return {"cmd": "CNFM", "action": "VTOK", "verified": True}
+        else:
+            return {"cmd": "EROR", "msg": "Invalid or expired session token", "verified": False}
+
+def handle_vtok(data, addr, user, vpn_node):
+    return verify_token(data, addr), user, vpn_node
 
 def vpn_server_login(data, addr):
     server_name = data.get("server_name")
@@ -186,7 +213,8 @@ COMMANDS = {
     "REGI": handle_regi,
     "LOGF": handle_logf,
     "SLGN": handle_slgn,
-    "LIST": handle_list
+    "LIST": handle_list,
+    "VTOK": handle_vtok
 }
 
 #data transfer:

@@ -63,10 +63,10 @@ async def verify_client_session(secure_sock, username, token, addr):
         return response.get("verified") is True
         
     except asyncio.TimeoutError:
-        logging.error(f"[{addr}] Timeout waiting for Broker to verify user '{username}'")
+        # logging.error(f"[{addr}] Timeout waiting for Broker to verify user '{username}'")
         return False
     except Exception as e:
-        logging.error(f"[{addr}] Exception during session verification for '{username}': {e}")
+        # logging.error(f"[{addr}] Exception during session verification for '{username}': {e}")
         return False
     finally:
         # Clean up memory securely using the compound key
@@ -156,7 +156,7 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
         
         # Call our multiplexed async verification function
         is_valid = await verify_client_session(secure_socket, username, token, addr) 
-                           
+
         if not is_valid:
             logging.warning(f"[{addr}] Authentication DENIED for user '{username}'. Dropping packet!")
             return

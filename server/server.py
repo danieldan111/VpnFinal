@@ -18,7 +18,7 @@ session_lock = threading.Lock()
 server_lock = threading.Lock() # Lock for the VPN servers list
 
 # State tracking
-active_sessions = {}   # username -> addr
+active_sessions = {}   # username -> session
 available_servers = {} # server_name -> {"addr": addr, "display_name": name, "load": string}
 
 #db funcs:

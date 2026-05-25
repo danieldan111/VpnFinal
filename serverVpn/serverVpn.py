@@ -8,7 +8,8 @@ from protocol import SecureSocket
 import json
 import time
 import os
-
+import queue
+import threading
 
 MASK = "/24"
 ADDRESS = "10.9.0.1" + MASK
@@ -23,6 +24,10 @@ addr_to_ip_map = {}
 
 # Instantly generate X25519 keys
 SERVER_PRIVATE_KEY, SERVER_PUBLIC_BYTES = KeyGenerator.generate_x25519_keypair()
+
+pending_verifications = {}
+verifications_lock = threading.Lock()
+broker_send_lock = threading.Lock()
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -41,16 +46,29 @@ def cleanup_route_table():
 
 def verify_client_session(username, token):
     """Contacts the Broker over TCP to verify the client's session token."""
+    user_queue = queue.Queue()
+    with verifications_lock:
+        pending_verifications[username] = user_queue
+
+    global secure
     try:
-        global secure
-        # Send the verification command
-        secure.send_json({"cmd": "VTOK", "username": username, "token": token})
-        res = secure.recv_json()
+        with broker_send_lock:
+            secure.send_json({"cmd": "VTOK", "username": username, "token": token})
         
-        return res.get("verified") is True
-    except Exception as e:
-        logging.error(f"Broker backend authentication failed: {e}")
+
+        response = user_queue.get(timeout=5)
+        return response.get("verified") is True
+
+    except queue.Empty:
+        logging.error(f"Timeout waiting for Broker to verify user '{username}'")
         return False
+    except Exception as e:
+        logging.error(f"Error during broker verification: {e}")
+        return False
+    finally:
+        with verifications_lock:
+            if username in pending_verifications:
+                del pending_verifications[username]
 
 class ServerDatagramProtocol(asyncio.DatagramProtocol):
     def __init__(self, tun_adapter):
@@ -135,7 +153,7 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
         
         # Ask the Broker if the token is valid (runs in background thread to prevent freezing)
         loop = asyncio.get_running_loop()
-        is_valid = await loop.run_in_executor(None, verify_client_session, username, token)
+        is_valid = await loop.run_in_executor(None, verify_client_session, secure, username, token)
         
         if not is_valid:
             logging.warning(f"[{addr}] Authentication DENIED for user '{username}'. Dropping packet!")
@@ -236,9 +254,18 @@ async def monitor_broker_connection(secure_socket):
             if not data:
                 logging.error("Broker closed the connection.")
                 break
-                
+
             # (Optional: If the broker ever sends real-time commands, handle them here)
+            cmd = data.get("cmd")
+            action = data.get("action")
             
+            if cmd == "CNFM" and action == "VTOK":
+                username = data.get("username")
+                with verifications_lock:
+                    if username in pending_verifications:
+                        pending_verifications[username].put(data)
+                continue 
+
         except Exception as e:
             # If the socket crashes or loses internet, it throws an error
             logging.error(f"Lost connection to Broker unexpectedly: {e}")

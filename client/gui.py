@@ -39,6 +39,7 @@ class VPNClientApp(ctk.CTk):
         
         self.secure = None
         self.current_user = None
+        self.session_token = None 
         self.waiting_response = False
         self.timeout_id = None
         
@@ -97,6 +98,7 @@ class VPNClientApp(ctk.CTk):
     # ---------------- Dictionary Dispatcher ---------------- #
     def handle_login_success(self, data):
         self.current_user = data.get("username", self.current_user)
+        self.session_token = data.get("token")
         self.show_frame("VPNPage")
 
     def handle_register_success(self, data):
@@ -105,6 +107,7 @@ class VPNClientApp(ctk.CTk):
 
     def handle_logoff_success(self, data):
         self.current_user = None
+        self.session_token = None
         self.show_frame("HomePage")
 
     def handle_confirm(self, data):
@@ -146,7 +149,7 @@ class VPNClientApp(ctk.CTk):
         
         # -u flag forces unbuffered output so we get logs instantly
         print(f"[CLIENT] connecting to vpn server at ({target_ip}, {target_port})")
-        cmd = [sys.executable, "-u", "clientVpn.py", target_ip, target_port]
+        cmd = [sys.executable, "-u", "clientVpn.py", target_ip, target_port, self.current_user, self.session_token]
         
         kwargs = {
             "stdout": subprocess.PIPE,

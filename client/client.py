@@ -33,7 +33,7 @@ def connection_worker(app):
         app.after(0, app.connection_lost)
 
 def main():
-    if (sys.argv) != 3:
+    if (len(sys.argv)) != 3:
         print("Usage: python client.py <IP> <PORT>")
         sys.exit(1)
     

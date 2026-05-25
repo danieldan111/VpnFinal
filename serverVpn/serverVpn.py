@@ -308,7 +308,7 @@ def connect_to_server(addr):
         print(f"[VPN-SERVER] Connection failed: {e}")
 
 if __name__ == "__main__":
-    if (sys.argv) != 3:
+    if (len(sys.argv)) != 3:
         print("Usage: python serverVpn.py <IP> <PORT>")
         sys.exit(1)
 

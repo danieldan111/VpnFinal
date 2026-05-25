@@ -8,8 +8,7 @@ from protocol import SecureSocket
 import json
 import time
 import os
-import queue
-import threading
+
 
 MASK = "/24"
 ADDRESS = "10.9.0.1" + MASK
@@ -26,8 +25,7 @@ addr_to_ip_map = {}
 SERVER_PRIVATE_KEY, SERVER_PUBLIC_BYTES = KeyGenerator.generate_x25519_keypair()
 
 pending_verifications = {}
-verifications_lock = threading.Lock()
-broker_send_lock = threading.Lock()
+secure_socket = None  # Global reference to the broker secure socket
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -44,31 +42,33 @@ def cleanup_route_table():
     toolkit.run("iptables -D FORWARD -s 10.9.0.0/24 -j ACCEPT", check=False)
     toolkit.run("iptables -D FORWARD -d 10.9.0.0/24 -j ACCEPT", check=False)
 
-def verify_client_session(username, token):
-    """Contacts the Broker over TCP to verify the client's session token."""
-    user_queue = queue.Queue()
-    with verifications_lock:
-        pending_verifications[username] = user_queue
-
-    global secure
+async def verify_client_session(secure_sock, username, token):
+    loop = asyncio.get_running_loop()
+    
+    # Create an async placeholder that resolves when the monitor loop receives the answer
+    fut = loop.create_future()
+    pending_verifications[username] = fut
+    
     try:
-        with broker_send_lock:
-            secure.send_json({"cmd": "VTOK", "username": username, "token": token})
+        payload = {"cmd": "VTOK", "username": username, "token": token}
         
-
-        response = user_queue.get(timeout=5)
+        # Safely send the JSON payload without blocking the event loop
+        await loop.run_in_executor(None, secure_sock.send_json, payload)
+        
+        # Await the response asynchronously with a 5-second timeout dropguard
+        response = await asyncio.wait_for(fut, timeout=5.0)
         return response.get("verified") is True
-
-    except queue.Empty:
+        
+    except asyncio.TimeoutError:
         logging.error(f"Timeout waiting for Broker to verify user '{username}'")
         return False
     except Exception as e:
-        logging.error(f"Error during broker verification: {e}")
+        logging.error(f"Exception during session verification: {e}")
         return False
     finally:
-        with verifications_lock:
-            if username in pending_verifications:
-                del pending_verifications[username]
+        # Clean up the routing dictionary regardless of success or failure
+        pending_verifications.pop(username, None)
+
 
 class ServerDatagramProtocol(asyncio.DatagramProtocol):
     def __init__(self, tun_adapter):
@@ -133,37 +133,38 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
             except Exception as e:
                 logging.error(f"Decryption error from {addr}: {e}")
 
+
     async def handle_getk(self, data: bytes, addr: Tuple[str, int]):
-        # Ensure we have at least 4 bytes CMD + 32 bytes Public Key
         if len(data) < 36: 
-            return 
-            
+            return
+        
         client_pub_bytes = data[4:36]
         
-        # Extract the JSON authentication payload
+        # Parse the JSON payload appended by the client
         try:
             auth_data = json.loads(data[36:].decode('utf-8'))
             username = auth_data.get("u")
             token = auth_data.get("t")
         except Exception as e:
-            logging.warning(f"[{addr}] Invalid auth payload format. Dropping connection. Error: {e}")
+            logging.warning(f"[{addr}] Invalid auth payload format. Error: {e}")
             return
-            
+
         logging.info(f"[{addr}] Authenticating user '{username}' with Broker...")
         
-        # Ask the Broker if the token is valid (runs in background thread to prevent freezing)
-        loop = asyncio.get_running_loop()
-        is_valid = await loop.run_in_executor(None, verify_client_session, secure, username, token)
+        # Call our multiplexed async verification function
+        is_valid = await verify_client_session(secure_socket, username, token)
         
         if not is_valid:
             logging.warning(f"[{addr}] Authentication DENIED for user '{username}'. Dropping packet!")
             return
             
-        # If valid, proceed with cryptographic handshake
+        # If successfully authenticated by the Broker, establish the local crypto tunnel
         aes_key = KeyGenerator.derive_aes_key(SERVER_PRIVATE_KEY, client_pub_bytes)
         client_ciphers[addr] = VpnCipher(aes_key)
+        
         self.transport.sendto(b"KEYE" + SERVER_PUBLIC_BYTES, addr)
-        logging.info(f"[{addr}] Secure tunnel established for user '{username}'")
+        logging.info(f"Secure tunnel established with {addr} for user '{username}'")
+
 
     async def write_to_tun(self, plaintext, addr):
         await self.tun_adapter.write(plaintext)
@@ -200,7 +201,8 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
                 IP_POOL.insert(0, recylcled_ip)
 
 
-async def main(secure_socket):
+async def main():
+    global secure_socket
     setup_route_table()
     tun_adapter = await create_adapter(ADDRESS, NAME)
     
@@ -241,38 +243,33 @@ async def main(secure_socket):
         logging.info("Server shutdown complete.")
 
 
-async def monitor_broker_connection(secure_socket):
+async def monitor_broker_connection(secure_sock):
     loop = asyncio.get_running_loop()
-    logging.info("Broker monitor started.")
+    logging.info("Async Broker monitor loop started.")
     
     while True:
         try:
-            # Safely run the blocking recv_json in a background thread
-            data = await loop.run_in_executor(None, secure_socket.recv_json)
-            
-            # If recv_json returns empty/None, the socket closed cleanly
+            # Offload the blocking recv_json to an executor to avoid freezing the event loop
+            data = await loop.run_in_executor(None, secure_sock.recv_json)
             if not data:
-                logging.error("Broker closed the connection.")
                 break
-
-            # (Optional: If the broker ever sends real-time commands, handle them here)
+                
             cmd = data.get("cmd")
             action = data.get("action")
             
+            # Route authentication responses to the waiting future
             if cmd == "CNFM" and action == "VTOK":
                 username = data.get("username")
-                with verifications_lock:
-                    if username in pending_verifications:
-                        pending_verifications[username].put(data)
-                continue 
-
+                if username in pending_verifications:
+                    # Wake up the suspended verify_client_session function with the data
+                    pending_verifications[username].set_result(data)
+                continue
+                
         except Exception as e:
-            # If the socket crashes or loses internet, it throws an error
-            logging.error(f"Lost connection to Broker unexpectedly: {e}")
+            logging.error(f"Error in broker monitoring task: {e}")
             break
-
-    # If the loop breaks, the broker is dead. Trigger graceful shutdown!
-    logging.error("Initiating VPN Server self-destruct...")
+            
+    logging.error("Lost connection to Broker. Initiating VPN Server self-destruct...")
     os._exit(1)
 
 
@@ -307,5 +304,5 @@ if __name__ == "__main__":
     # SERVER_IP = parms["host"]
     SERVER_NAME = parms["server_name"]
     print("[VPN-SERVER] connecting to main server")
-    secure = connect_to_server(BROKER_ADDR) 
-    asyncio.run(main(secure))
+    secure_socket = connect_to_server(BROKER_ADDR) 
+    asyncio.run(main())

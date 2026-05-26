@@ -4,6 +4,7 @@ import customtkinter as ctk
 import subprocess
 import sys
 import threading
+import time
 
 # --- UI Setup ---
 ctk.set_appearance_mode("Dark")
@@ -48,6 +49,13 @@ class VPNClientApp(ctk.CTk):
         self.connected_server = None  
         self.debug_window = None
         
+        #bandwith monitoring
+        self.last_stats_time = time.time()
+        self.total_bytes_rx = 0
+        self.total_bytes_tx = 0
+        self.last_rx_count = 0
+        self.last_tx_count = 0
+
         self.current_frame_name = "ConnectingPage"
 
         self.container = ctk.CTkFrame(self)
@@ -189,9 +197,13 @@ class VPNClientApp(ctk.CTk):
                     stats_str = line.replace("[STATS]", "").strip()
                     rx_str, tx_str = stats_str.split(",")
                     
-                    # Update the GUI safely from the background thread
+                    # Accumulate raw total bytes sent over the true socket layer
+                    self.total_bytes_rx += int(rx_str)
+                    self.total_bytes_tx += int(tx_str)
+                    
+                    # Trigger the math calculation to execute safely inside the GUI thread context
                     if "ConnectedPage" in self.frames:
-                        self.after(0, self.frames["ConnectedPage"].update_speeds, int(rx_str), int(tx_str))
+                        self.after(0, self.frames["ConnectedPage"].calculate_and_render_metrics)
                 except Exception as e:
                     print(f"[GUI] Error parsing stats: {e}")
                 
@@ -275,6 +287,14 @@ class VPNClientApp(ctk.CTk):
             self.debug_window = None
             
         if switch_page:
+            # Reset bandwidth baselines for fresh execution sessions
+            self.last_stats_time = time.time()
+            self.total_bytes_rx = 0
+            self.total_bytes_tx = 0
+            self.last_rx_count = 0
+            self.last_tx_count = 0
+            
+            self.show_frame("VPNPage")
             self.show_frame("VPNPage")
 
 
@@ -576,18 +596,50 @@ class ConnectedPage(BasePage):
         self.disconnect_btn.pack(pady=30)
 
 
-    def update_speeds(self, rx_bytes, tx_bytes):
-        self.dl_label.configure(text=f"Download: {self.format_speed(rx_bytes)}")
-        self.ul_label.configure(text=f"Upload: {self.format_speed(tx_bytes)}")
+    def calculate_and_render_metrics(self):
+        """
+        Samples total historical data against elapsed system time 
+        to calculate accurate, smooth network bandwidth rates.
+        """
+        import time
+        current_time = time.time()
+        elapsed = current_time - self.controller.last_stats_time
+        
+        # Prevent division by zero errors on rapid execution ticks
+        if elapsed <= 0:
+            elapsed = 0.1
+            
+        # Extract snapshot baselines from main application state tracking
+        current_rx = self.controller.total_bytes_rx
+        current_tx = self.controller.total_bytes_tx
+        
+        # Calculate differences (delta bytes processed since last snapshot frame)
+        rx_delta = current_rx - self.controller.last_rx_count
+        tx_delta = current_tx - self.controller.last_tx_count
+        
+        # Compute exact data throughput limits per second
+        rx_speed = rx_delta / elapsed
+        tx_speed = tx_delta / elapsed
+        
+        # Safely repaint your text UI objects with human-readable configurations
+        self.dl_label.configure(text=f"Download: {self.format_bytes(rx_speed)}/s")
+        self.ul_label.configure(text=f"Upload: {self.format_bytes(tx_speed)}/s")
+        
+        # Cache current positions to serve as baseline limits for the next evaluation cycle
+        self.controller.last_stats_time = current_time
+        self.controller.last_rx_count = current_rx
+        self.controller.last_tx_count = current_tx
 
-    def format_speed(self, bytes_per_sec):
-        """Helper to convert bytes into readable KB/s or MB/s"""
-        if bytes_per_sec < 1024:
-            return f"{bytes_per_sec} B/s"
-        elif bytes_per_sec < 1048576:
-            return f"{bytes_per_sec / 1024:.2f} KB/s"
+    def format_bytes(self, bytes_per_sec):
+        """
+        Converts raw numeric data fields into scaled human-readable string values.
+        """
+        if bytes_per_sec < 1024.0:
+            return f"{bytes_per_sec:.2f} B"
+        elif bytes_per_sec < 1048576.0:
+            return f"{bytes_per_sec / 1024.0:.2f} KB"
         else:
-            return f"{bytes_per_sec / 1048576:.2f} MB/s"
+            return f"{bytes_per_sec / 1048576.0:.2f} MB"
 
     def toggle_menu(self):
         if self.menu_visible:

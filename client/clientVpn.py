@@ -17,9 +17,9 @@ CLIENT_ADAPTER = None
 vpn_cipher = None
 CLIENT_PRIVATE_KEY, CLIENT_PUBLIC_BYTES = KeyGenerator.generate_x25519_keypair()
 
-
-rx_bytes_sec = 0
-tx_bytes_sec = 0
+# Persistent lifetime counters tracking total bytes processed over the socket layer
+total_rx_bytes = 0
+total_tx_bytes = 0
 
 def setup_route_table(interface_name, server_ip_addr):
     logging.info("Setting up client routing table...")
@@ -48,11 +48,10 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
         self.packet_count = 0
         self.last_seen_server = time.time()
 
-        # Start the background monitor
+        # Start background monitor cycles
         self.loop.create_task(self.monitor_connection())
         self.loop.create_task(self.check_ip_timeout())
         self.loop.create_task(self.report_bandwidth())
-
 
     async def check_ip_timeout(self):
         """Waits x seconds. If the IP isn't received by then, shut down."""
@@ -60,35 +59,30 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
         
         await asyncio.sleep(IP_TIMEOUT_SECONDS)
         
-        # If the TUN hasn't started after 10 seconds, the IP assignment failed
         if not self.tun_started:
             logging.error(f"Failed to receive an IP address within {IP_TIMEOUT_SECONDS} seconds. Aborting!")
             os._exit(1)
 
     def connection_made(self, transport):
         self.transport = transport
-        # Serialize the username and token into a JSON string and encode to bytes
         auth_data = json.dumps({"u": USERNAME, "t": TOKEN}).encode('utf-8')
-        
-        # Payload structure: [4 bytes CMD] + [32 bytes Public Key] + [N bytes JSON Auth Data]
         payload = b"GETK" + CLIENT_PUBLIC_BYTES + auth_data
         
         self.transport.sendto(payload, SERVER_ADDR)
         logging.info(f"Sent GETK, Public Key, and Auth Token for user '{USERNAME}'...")
-        # self.transport.sendto(b"GETK" + CLIENT_PUBLIC_BYTES, SERVER_ADDR)
-        
 
     def datagram_received(self, data: bytes, addr: Tuple[str, int]):
-        global vpn_cipher, ADDRESS, CLIENT_ADAPTER, rx_bytes_sec
+        global vpn_cipher, ADDRESS, CLIENT_ADAPTER, total_rx_bytes
         
-        rx_bytes_sec += len(data)
+        # Accumulate the incoming raw encrypted network payload size
+        total_rx_bytes += len(data)
 
         if len(data) < 4: return
         msg_code = data[:4]
 
         if msg_code == b"KEYE":
             if self.handshake_done: 
-                return # Ignore duplicate UDP packets!
+                return 
             self.handshake_done = True
             
             server_pub_bytes = data[4:]
@@ -96,12 +90,11 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
             vpn_cipher = VpnCipher(aes_key)
             logging.info("Secure AES-GCM Tunnel Established!")
             
-            # Ask the server for an IP in the pool
             self.transport.sendto(b"GETI", SERVER_ADDR)
             
         elif msg_code == b"IP__":
             if self.tun_started: 
-                return # Ignore duplicate IP assignments!
+                return 
             self.tun_started = True
             
             if vpn_cipher is None: return
@@ -110,18 +103,16 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
                 ADDRESS = ip_bytes.decode() + "/24"
                 logging.info(f"Received IP from server: {ADDRESS}")
                 
-                # We have our Key and IP. Start the TUN interface!
                 self.loop.create_task(self.start_tun())
             except Exception as e:
                 logging.error(f"Error decrypting IP: {e}")
-                self.tun_started = False # Reset on failure
+                self.tun_started = False 
 
         else:
             if vpn_cipher is None or CLIENT_ADAPTER is None:
                 return
             try:
                 plaintext = vpn_cipher.decrypt(data)
-
                 self.last_seen_server = time.time()
 
                 self.packet_count += 1
@@ -130,7 +121,7 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
                 
                 self.loop.create_task(CLIENT_ADAPTER.write(plaintext))
             except ValueError:
-                pass  # Silently ignore duplicates
+                pass  
             except Exception as e:
                 logging.error(f"Decryption error: {e}")
 
@@ -141,19 +132,19 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
         self.loop.create_task(self.tun_to_server())
 
     async def tun_to_server(self):
-        global tx_bytes_sec
+        global total_tx_bytes
         while True:
             try:
                 packet = await CLIENT_ADAPTER.read()
                 if not packet: continue
-
-                tx_bytes_sec += len(packet)
                 
                 if vpn_cipher:
                     encrypted_packet = vpn_cipher.encrypt(packet)
                     self.transport.sendto(encrypted_packet, SERVER_ADDR)
+                    
+                    # Accumulate TRUE network layer payload sizes after encryption processing
+                    total_tx_bytes += len(encrypted_packet)
             
-            # --- PREVENT INFINITE SPAM ---
             except ValueError:
                 logging.error("TUN file closed. Stopping loop.")
                 break 
@@ -165,25 +156,18 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
         TIMEOUT_SECONDS = 20
         
         while True:
-            await asyncio.sleep(10)  # Check every 10 seconds
+            await asyncio.sleep(10)
             
             if time.time() - self.last_seen_server > TIMEOUT_SECONDS:
                 logging.error("Connection to server lost! Shutting down tunnel...")
-                
-                # Force exit the subprocess. 
-                # This will tell your GUI to trigger its disconnect logic.
                 os._exit(1)
     
     async def report_bandwidth(self):
-        global rx_bytes_sec, tx_bytes_sec
+        global total_rx_bytes, total_tx_bytes
         while True:
-            await asyncio.sleep(1)
-            # Print the stats and flush the output so the GUI gets it instantly
-            print(f"[STATS] {rx_bytes_sec},{tx_bytes_sec}", flush=True)
-            
-            # Reset counters for the next second
-            rx_bytes_sec = 0
-            tx_bytes_sec = 0
+            await asyncio.sleep(0.5) # Output stats twice a second for a more responsive UI
+            # Streams total historical values down stdout without modifying local counters
+            print(f"[STATS] {total_rx_bytes},{total_tx_bytes}", flush=True)
 
 async def main():
     loop = asyncio.get_running_loop()

@@ -333,70 +333,9 @@ class LoginPage(BasePage):
         self.home_btn.pack(pady=10)
 
     def clear_fields(self):
-        """Runs whenever this frame is raised/shown to the user."""
-        self.menu_frame.place_forget()
-        self.menu_visible = False
-        self.logoff_btn.configure(state="normal")
-        
-        if self.controller.current_user:
-            self.user_label.configure(text=f"Logged in as:\n{self.controller.current_user}")
-        
-        if self.controller.connected_server:
-            self.server_name_label.configure(text=self.controller.connected_server.get("name", "Unknown Server"))
-            
-        # --- Start the isolated recurring UI clock cycle ---
-        import time
-        self.controller.last_stats_time = time.time()
-        self.controller.last_rx_count = self.controller.total_bytes_rx
-        self.controller.last_tx_count = self.controller.total_bytes_tx
-        self.run_periodic_ui_refresh()
-
-    def run_periodic_ui_refresh(self):
-        """
-        A strict, time-gated loop that runs inside the UI context 
-        once per second to compute smooth network updates.
-        """
-        # Guard: Only keep looping if the user is actively viewing the connected dashboard
-        if self.controller.current_frame_name != "ConnectedPage":
-            return
-            
-        current_time = time.time()
-        elapsed = current_time - self.controller.last_stats_time
-        
-        if elapsed <= 0.1:
-            elapsed = 0.1
-            
-        current_rx = self.controller.total_bytes_rx
-        current_tx = self.controller.total_bytes_tx
-        
-        # Calculate true data deltas processed over this exact time window
-        rx_delta = current_rx - self.controller.last_rx_count
-        tx_delta = current_tx - self.controller.last_tx_count
-        
-        # Calculate Mbps (Bytes * 8 bits / elapsed time / 1,000,000)
-        rx_speed_bits = (rx_delta / elapsed) * 8
-        tx_speed_bits = (tx_delta / elapsed) * 8
-        
-        # Repaint text components safely
-        self.dl_label.configure(text=f"Download: {self.format_bits(rx_speed_bits)}")
-        self.ul_label.configure(text=f"Upload: {self.format_bits(tx_speed_bits)}")
-        
-        # Save baseline history references
-        self.controller.last_stats_time = current_time
-        self.controller.last_rx_count = current_rx
-        self.controller.last_tx_count = current_tx
-        
-        # Queue up the next visual refresh cycle exactly 1000ms from now
-        self.after(1000, self.run_periodic_ui_refresh)
-
-    def format_bits(self, bits_per_sec):
-        """Converts raw bit values into standard Mbps/Kbps display metrics."""
-        if bits_per_sec < 1000.0:
-            return f"{bits_per_sec:.2f} bps"
-        elif bits_per_sec < 1000000.0:
-            return f"{bits_per_sec / 1000.0:.2f} Kbps"
-        else:
-            return f"{bits_per_sec / 1000000.0:.2f} Mbps"
+        self.enable_inputs()
+        self.username_entry.delete(0, tk.END)
+        self.password_entry.delete(0, tk.END)
 
     def disable_inputs(self):
         self.username_entry.configure(state="disabled")
@@ -701,6 +640,7 @@ class ConnectedPage(BasePage):
             self.menu_visible = True
 
     def clear_fields(self):
+        """Runs whenever this frame is raised/shown to the user."""
         self.menu_frame.place_forget()
         self.menu_visible = False
         self.logoff_btn.configure(state="normal")
@@ -710,6 +650,59 @@ class ConnectedPage(BasePage):
         
         if self.controller.connected_server:
             self.server_name_label.configure(text=self.controller.connected_server.get("name", "Unknown Server"))
+            
+        # --- Start the isolated recurring UI clock cycle ---
+        self.controller.last_stats_time = time.time()
+        self.controller.last_rx_count = self.controller.total_bytes_rx
+        self.controller.last_tx_count = self.controller.total_bytes_tx
+        self.run_periodic_ui_refresh()
+
+    def run_periodic_ui_refresh(self):
+        """
+        A strict, time-gated loop that runs inside the UI context 
+        once per second to compute smooth network updates.
+        """
+        #Only keep looping if the user is actively viewing the connected dashboard
+        if self.controller.current_frame_name != "ConnectedPage":
+            return
+            
+        current_time = time.time()
+        elapsed = current_time - self.controller.last_stats_time
+        
+        if elapsed <= 0.1:
+            elapsed = 0.1
+            
+        current_rx = self.controller.total_bytes_rx
+        current_tx = self.controller.total_bytes_tx
+        
+        # Calculate true data deltas processed over this exact time window
+        rx_delta = current_rx - self.controller.last_rx_count
+        tx_delta = current_tx - self.controller.last_tx_count
+        
+        # Calculate Mbps (Bytes * 8 bits / elapsed time / 1,000,000)
+        rx_speed_bits = (rx_delta / elapsed) * 8
+        tx_speed_bits = (tx_delta / elapsed) * 8
+        
+        # Repaint text components safely
+        self.dl_label.configure(text=f"Download: {self.format_bits(rx_speed_bits)}")
+        self.ul_label.configure(text=f"Upload: {self.format_bits(tx_speed_bits)}")
+        
+        # Save baseline history references
+        self.controller.last_stats_time = current_time
+        self.controller.last_rx_count = current_rx
+        self.controller.last_tx_count = current_tx
+        
+        # Queue up the next visual refresh cycle exactly 1000ms from now
+        self.after(1000, self.run_periodic_ui_refresh)
+
+    def format_bits(self, bits_per_sec):
+        """Converts raw bit values into standard Mbps/Kbps display metrics."""
+        if bits_per_sec < 1000.0:
+            return f"{bits_per_sec:.2f} bps"
+        elif bits_per_sec < 1000000.0:
+            return f"{bits_per_sec / 1000.0:.2f} Kbps"
+        else:
+            return f"{bits_per_sec / 1000000.0:.2f} Mbps"
 
     def logoff(self):
         if not self.controller.current_user or self.controller.waiting_response: return

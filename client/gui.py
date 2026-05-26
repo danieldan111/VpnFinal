@@ -599,47 +599,45 @@ class ConnectedPage(BasePage):
     def calculate_and_render_metrics(self):
         """
         Samples total historical data against elapsed system time 
-        to calculate accurate, smooth network bandwidth rates.
+        to calculate accurate, smooth network bandwidth rates in Megabits (Mbps).
         """
         import time
         current_time = time.time()
         elapsed = current_time - self.controller.last_stats_time
         
-        # Prevent division by zero errors on rapid execution ticks
         if elapsed <= 0:
             elapsed = 0.1
             
-        # Extract snapshot baselines from main application state tracking
         current_rx = self.controller.total_bytes_rx
         current_tx = self.controller.total_bytes_tx
         
-        # Calculate differences (delta bytes processed since last snapshot frame)
         rx_delta = current_rx - self.controller.last_rx_count
         tx_delta = current_tx - self.controller.last_tx_count
         
-        # Compute exact data throughput limits per second
-        rx_speed = rx_delta / elapsed
-        tx_speed = tx_delta / elapsed
+        # --- THE FIX: Multiply by 8 to convert Bytes per second to Bits per second ---
+        rx_speed_bits = (rx_delta / elapsed) * 8
+        tx_speed_bits = (tx_delta / elapsed) * 8
         
-        # Safely repaint your text UI objects with human-readable configurations
-        self.dl_label.configure(text=f"Download: {self.format_bytes(rx_speed)}/s")
-        self.ul_label.configure(text=f"Upload: {self.format_bytes(tx_speed)}/s")
+        # Repaint UI elements using the new bit-based formatter
+        self.dl_label.configure(text=f"Download: {self.format_bits(rx_speed_bits)}")
+        self.ul_label.configure(text=f"Upload: {self.format_bits(tx_speed_bits)}")
         
-        # Cache current positions to serve as baseline limits for the next evaluation cycle
         self.controller.last_stats_time = current_time
         self.controller.last_rx_count = current_rx
         self.controller.last_tx_count = current_tx
 
-    def format_bytes(self, bytes_per_sec):
+
+    def format_bits(self, bits_per_sec):
         """
-        Converts raw numeric data fields into scaled human-readable string values.
+        Converts raw numeric bits into standard internet speed units (Kbps / Mbps).
         """
-        if bytes_per_sec < 1024.0:
-            return f"{bytes_per_sec:.2f} B"
-        elif bytes_per_sec < 1048576.0:
-            return f"{bytes_per_sec / 1024.0:.2f} KB"
+        if bits_per_sec < 1000.0:
+            return f"{bits_per_sec:.2f} bps"
+        elif bits_per_sec < 1000000.0:
+            return f"{bits_per_sec / 1000.0:.2f} Kbps"
         else:
-            return f"{bytes_per_sec / 1048576.0:.2f} MB"
+            return f"{bits_per_sec / 1000000.0:.2f} Mbps"
+    
 
     def toggle_menu(self):
         if self.menu_visible:

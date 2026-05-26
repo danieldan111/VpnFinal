@@ -109,14 +109,11 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
             else:
                 logging.warning("No IPs left in pool!")
                 return
-            
-            
-        
+                
             cipher = client_ciphers[addr]
             encrypted_ip = cipher.encrypt(ip.encode())
             self.transport.sendto(b"IP__" + encrypted_ip, addr)
-            if addr in client_ciphers:
-                logging.info(f"Assigned/Confirmed IP {ip} for {addr}")
+            logging.info(f"Assigned/Confirmed IP {ip} for {addr}")
 
         # 3. Encrypted Data Traffic
         else:
@@ -168,8 +165,6 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
             logging.warning(f"[{addr}] Authentication DENIED for user '{username}'. Dropping packet!")
             return
         
-        if addr in client_ciphers:
-            return
         
         # If successfully authenticated by the Broker, establish the local crypto tunnel
         aes_key = KeyGenerator.derive_aes_key(SERVER_PRIVATE_KEY, client_pub_bytes)

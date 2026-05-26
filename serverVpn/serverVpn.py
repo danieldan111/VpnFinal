@@ -47,31 +47,37 @@ async def verify_client_session(secure_sock, username, token, addr):
     loop = asyncio.get_running_loop()
     username = str(username).strip()
     
-    # Unique compound key tracking this specific client's network endpoint
-    tracking_key = (username, addr)
-    
+    #checks if the client is alreadddy in a verification proccsess
+    if username in pending_verifications:
+        logging.info(f"[{addr}] Duplicate handshake packet detected for '{username}'. Dropping duplicate Broker request.")
+        try:
+            #wait for the same response for packet #1
+            response = await asyncio.wait_for(pending_verifications[username], timeout=5.0)
+            return response.get("verified") is True
+        except Exception:
+            return False
+
+    #runs only for the first packet
     fut = loop.create_future()
-    pending_verifications[tracking_key] = fut
+    pending_verifications[username] = fut  
     
     try:
         payload = {"cmd": "VTOK", "username": username, "token": token}
         logging.info(f"[{addr}] Sending VTOK verification request to Broker for '{username}'")
         
+        
         await loop.run_in_executor(None, secure_sock.send_json, payload)
         
-        # Await response specific to this socket connection call
         response = await asyncio.wait_for(fut, timeout=5.0)
         return response.get("verified") is True
         
     except asyncio.TimeoutError:
-        # logging.error(f"[{addr}] Timeout waiting for Broker to verify user '{username}'")
         return False
     except Exception as e:
-        # logging.error(f"[{addr}] Exception during session verification for '{username}': {e}")
         return False
     finally:
-        # Clean up memory securely using the compound key
-        pending_verifications.pop(tracking_key, None)
+        if username in pending_verifications and pending_verifications[username] == fut:
+            pending_verifications.pop(username, None)
 
 
 class ServerDatagramProtocol(asyncio.DatagramProtocol):

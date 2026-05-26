@@ -48,17 +48,8 @@ async def verify_client_session(secure_sock, username, token, addr):
     loop = asyncio.get_running_loop()
     username = str(username).strip()
     
-    # #If this user is already being verified, hitch a ride on the existing future
-    # if username in pending_verifications:
-    #     logging.info(f"[{addr}] Duplicate handshake packet detected for '{username}'. Dropping duplicate Broker request.")
-    #     try:
-    #         # Duplicate task waits here without contacting the Broker again
-    #         response = await asyncio.wait_for(pending_verifications[username], timeout=5.0)
-    #         return response.get("verified") is True
-    #     except Exception:
-    #         return False
-
-    # First time seeing this user request, create a new Future object
+    
+    #create a new Future object
     fut = loop.create_future()
     pending_verifications[username] = fut
     
@@ -66,7 +57,6 @@ async def verify_client_session(secure_sock, username, token, addr):
         payload = {"cmd": "VTOK", "username": username, "token": token}
         logging.info(f"[{addr}] Sending VTOK verification request to Broker for '{username}'")
         
-        # Only the first packet issues the real network call to the Broker
         await loop.run_in_executor(None, secure_sock.send_json, payload)
         
         # Await the broker response via the monitor loop
@@ -78,7 +68,7 @@ async def verify_client_session(secure_sock, username, token, addr):
     except Exception as e:
         return False
     finally:
-        # Securely pop from memory only if this task is the original owner of the future
+        # Securely pop from memory
         if username in pending_verifications and pending_verifications[username] == fut:
             pending_verifications.pop(username, None)
 
@@ -162,11 +152,12 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
             logging.warning(f"[{addr}] Invalid auth payload format. Error: {e}")
             return
 
-        logging.info(f"[{addr}] Authenticating user '{username}' with Broker...")
         
         # Call our multiplexed async verification function
         if username in pending_verifications:
             return
+
+        logging.info(f"[{addr}] Authenticating user '{username}' with Broker...")
 
         is_valid = await verify_client_session(secure_socket, username, token, addr) 
 

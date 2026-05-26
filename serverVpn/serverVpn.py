@@ -43,31 +43,33 @@ def cleanup_route_table():
     toolkit.run("iptables -D FORWARD -s 10.9.0.0/24 -j ACCEPT", check=False)
     toolkit.run("iptables -D FORWARD -d 10.9.0.0/24 -j ACCEPT", check=False)
 
+
 async def verify_client_session(secure_sock, username, token, addr):
     loop = asyncio.get_running_loop()
     username = str(username).strip()
     
-    #checks if the client is alreadddy in a verification proccsess
+    #If this user is already being verified, hitch a ride on the existing future
     if username in pending_verifications:
         logging.info(f"[{addr}] Duplicate handshake packet detected for '{username}'. Dropping duplicate Broker request.")
         try:
-            #wait for the same response for packet #1
+            # Duplicate task waits here without contacting the Broker again
             response = await asyncio.wait_for(pending_verifications[username], timeout=5.0)
             return response.get("verified") is True
         except Exception:
             return False
 
-    #runs only for the first packet
+    # First time seeing this user request, create a new Future object
     fut = loop.create_future()
-    pending_verifications[username] = fut  
+    pending_verifications[username] = fut
     
     try:
         payload = {"cmd": "VTOK", "username": username, "token": token}
         logging.info(f"[{addr}] Sending VTOK verification request to Broker for '{username}'")
         
-        
+        # Only the first packet issues the real network call to the Broker
         await loop.run_in_executor(None, secure_sock.send_json, payload)
         
+        # Await the broker response via the monitor loop
         response = await asyncio.wait_for(fut, timeout=5.0)
         return response.get("verified") is True
         
@@ -76,6 +78,7 @@ async def verify_client_session(secure_sock, username, token, addr):
     except Exception as e:
         return False
     finally:
+        # Securely pop from memory only if this task is the original owner of the future
         if username in pending_verifications and pending_verifications[username] == fut:
             pending_verifications.pop(username, None)
 
@@ -259,6 +262,7 @@ async def monitor_broker_connection(secure_sock):
     
     while True:
         try:
+            # Receive data from the Broker socket
             data = await loop.run_in_executor(None, secure_sock.recv_json)
             if not data:
                 logging.warning("Broker closed connection.")
@@ -271,19 +275,18 @@ async def monitor_broker_connection(secure_sock):
                 username = str(data.get("username", "")).strip()
                 logging.info(f"Received VTOK validation from Broker for user: '{username}'")
                 
-                # Look for an active future matching this username
-                resolved = False
-                for (pending_user, addr), fut in list(pending_verifications.items()):
-                    if pending_user == username and not fut.done():
+                # Check if this username is waiting for verification
+                if username in pending_verifications:
+                    fut = pending_verifications[username]
+                    if not fut.done():
+                        # Resolve the single future shared by both tasks
                         fut.set_result(data)
-                        resolved = True
-                        break # Resolve one waiting client instance per broker response
-                
-                if not resolved:
-                    logging.warning(f"User '{username}' response received but no matching pending future was active.")
+                else:
+                    logging.warning(f"User '{username}' response received but no active verification task was waiting.")
                 continue
                 
         except Exception as e:
+            # This is where it crashed before because of the tuple unpacking loop
             logging.error(f"Error in broker monitoring task: {e}")
             break
             

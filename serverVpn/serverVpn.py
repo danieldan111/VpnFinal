@@ -110,13 +110,13 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
                 logging.warning("No IPs left in pool!")
                 return
             
-            if addr in client_ciphers:
-                return
+            
         
             cipher = client_ciphers[addr]
             encrypted_ip = cipher.encrypt(ip.encode())
             self.transport.sendto(b"IP__" + encrypted_ip, addr)
-            logging.info(f"Assigned/Confirmed IP {ip} for {addr}")
+            if addr in client_ciphers:
+                logging.info(f"Assigned/Confirmed IP {ip} for {addr}")
 
         # 3. Encrypted Data Traffic
         else:

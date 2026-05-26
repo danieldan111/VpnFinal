@@ -164,7 +164,10 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
         if not is_valid:
             logging.warning(f"[{addr}] Authentication DENIED for user '{username}'. Dropping packet!")
             return
-            
+        
+        if addr in client_ciphers:
+            return
+        
         # If successfully authenticated by the Broker, establish the local crypto tunnel
         aes_key = KeyGenerator.derive_aes_key(SERVER_PRIVATE_KEY, client_pub_bytes)
         client_ciphers[addr] = VpnCipher(aes_key)

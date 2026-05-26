@@ -38,9 +38,12 @@ def setup_route_table(interface_name, server_ip_addr):
 
 def restore_routing_table(server_ip_addr):
     logging.info("Restoring client routing table...")
+    toolkit.run("sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0")
+    toolkit.run("sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0")
     toolkit.run(f"ip route del {server_ip_addr}", check=False)
     toolkit.run("ip route del 0.0.0.0/1", check=False)
     toolkit.run("ip route del 128.0.0.0/1", check=False)
+    
 
 class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
     def __init__(self, loop):

@@ -48,15 +48,15 @@ async def verify_client_session(secure_sock, username, token, addr):
     loop = asyncio.get_running_loop()
     username = str(username).strip()
     
-    #If this user is already being verified, hitch a ride on the existing future
-    if username in pending_verifications:
-        logging.info(f"[{addr}] Duplicate handshake packet detected for '{username}'. Dropping duplicate Broker request.")
-        try:
-            # Duplicate task waits here without contacting the Broker again
-            response = await asyncio.wait_for(pending_verifications[username], timeout=5.0)
-            return response.get("verified") is True
-        except Exception:
-            return False
+    # #If this user is already being verified, hitch a ride on the existing future
+    # if username in pending_verifications:
+    #     logging.info(f"[{addr}] Duplicate handshake packet detected for '{username}'. Dropping duplicate Broker request.")
+    #     try:
+    #         # Duplicate task waits here without contacting the Broker again
+    #         response = await asyncio.wait_for(pending_verifications[username], timeout=5.0)
+    #         return response.get("verified") is True
+    #     except Exception:
+    #         return False
 
     # First time seeing this user request, create a new Future object
     fut = loop.create_future()
@@ -165,6 +165,9 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
         logging.info(f"[{addr}] Authenticating user '{username}' with Broker...")
         
         # Call our multiplexed async verification function
+        if username in pending_verifications:
+            return
+
         is_valid = await verify_client_session(secure_socket, username, token, addr) 
 
         if not is_valid:

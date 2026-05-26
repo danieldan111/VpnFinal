@@ -24,6 +24,9 @@ total_tx_bytes = 0
 def setup_route_table(interface_name, server_ip_addr):
     logging.info("Setting up client routing table...")
     toolkit.run("/usr/sbin/sysctl -w net.ipv4.ip_forward=1")
+    toolkit.run("sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1")
+    toolkit.run("sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1")
+
     
     old_default_route = toolkit.run("ip route show 0/0")
     if "via" in old_default_route:

@@ -74,7 +74,7 @@ class VpnCipher:
         ciphertext = encrypted_packet[8:]
         recv_sequence = struct.unpack("!Q", seq_bytes)[0]
 
-        # --- 1. SLIDING WINDOW REPLAY CHECK ---
+        #sliding window anti replay check
         if recv_sequence <= self.highest_recv_sequence:
             diff = self.highest_recv_sequence - recv_sequence
             # If it's older than our 64-packet window, drop it
@@ -85,13 +85,13 @@ class VpnCipher:
             if (self.replay_window & (1 << diff)) != 0:
                 raise ValueError(f"Replay attack detected! Sequence {recv_sequence} was already received.")
 
-        # --- 2. DECRYPT (AUTHENTICATE) ---
+        #decrypt
         # If an attacker tampered with the packet, this will throw an InvalidTag exception
         # before we ever update our sequence window!
         nonce = b'\x00\x00\x00\x00' + seq_bytes
         plaintext = self.aesgcm.decrypt(nonce, ciphertext, associated_data=None)
         
-        # --- 3. UPDATE WINDOW (ONLY AFTER AUTHENTICATION SUCCESS) ---
+        #update sliding window
         if recv_sequence > self.highest_recv_sequence:
             diff = recv_sequence - self.highest_recv_sequence
             if diff < 64:

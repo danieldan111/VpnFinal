@@ -42,8 +42,8 @@ def init_db():
                     )
                 """)
                 
-                # Insert a dummy VPN server for testing
-                add_server("node_01", "Israel, Herzliya")
+                #dummy VPN server for testing
+                #add_server("node_01", "Israel, Herzliya")
 
         print("[DB] Database created and initialized with dummy VPN node.")
 
@@ -141,7 +141,7 @@ def verify_token(data, addr):
         session = active_sessions.get(v_user)
         # Verify token match
         if session and session.get("token") == v_token:
-            # CRITICAL: Include 'username' explicitly in the success response
+            
             return {
                 "cmd": "CNFM", 
                 "action": "VTOK", 

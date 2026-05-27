@@ -171,8 +171,7 @@ class ClientVPNDatagramProtocol(asyncio.DatagramProtocol):
     async def report_bandwidth(self):
         global total_rx_bytes, total_tx_bytes
         while True:
-            await asyncio.sleep(0.5) # Output stats twice a second for a more responsive UI
-            # Streams total historical values down stdout without modifying local counters
+            await asyncio.sleep(0.5) # Output stats twice a second
             print(f"[STATS] {total_rx_bytes},{total_tx_bytes}", flush=True)
 
 async def main():

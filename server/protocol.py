@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-# ---------------- Predefined DH Parameters ----------------
+#Predefined DH Parameters
 # 2048-bit MODP Group (safe prime)
 PREDEFINED_PARAMETERS = dh.DHParameterNumbers(
     p=int(
@@ -23,14 +23,14 @@ PREDEFINED_PARAMETERS = dh.DHParameterNumbers(
 
 MAX_PACKET_SIZE = 10 * 1024 * 1024  # 10 MB DoS protection limit
 
-# ---------------- SecureSocket Class ----------------
+
 class SecureSocket:
     def __init__(self, sock: socket.socket):
         self.sock = sock
         self.aes = None
         self.queue = queue.Queue()  # For GUI-friendly message handling
 
-    # ---------------- Raw send/recv ----------------
+    
     def send_raw(self, data: bytes):
         length = len(data).to_bytes(4, "big")
         self.sock.sendall(length + data)
@@ -52,7 +52,7 @@ class SecureSocket:
             data += chunk
         return data
 
-    # ---------------- Handshake (Anonymous DH) ----------------
+    #dh x22519
     def server_handshake(self):
         parameters = PREDEFINED_PARAMETERS
 
@@ -104,7 +104,7 @@ class SecureSocket:
 
         self.aes = AESGCM(key)
 
-    # ---------------- Encrypted JSON send/recv ----------------
+    #json encrypt
     def send_json(self, data: dict):
         payload = json.dumps(data).encode('utf-8')
         nonce = os.urandom(12)

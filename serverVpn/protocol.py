@@ -9,8 +9,8 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-#dh parms:
-#2048-bit MODP Group (safe prime)
+#Predefined DH Parameters
+# 2048-bit MODP Group (safe prime)
 PREDEFINED_PARAMETERS = dh.DHParameterNumbers(
     p=int(
         "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"
@@ -52,7 +52,7 @@ class SecureSocket:
             data += chunk
         return data
 
-
+    #dh x22519
     def server_handshake(self):
         parameters = PREDEFINED_PARAMETERS
 
@@ -104,7 +104,7 @@ class SecureSocket:
 
         self.aes = AESGCM(key)
 
-    
+    #json encrypt
     def send_json(self, data: dict):
         payload = json.dumps(data).encode('utf-8')
         nonce = os.urandom(12)

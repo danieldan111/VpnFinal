@@ -6,11 +6,11 @@ import sys
 import threading
 import time
 
-# --- UI Setup ---
+
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-# --- Built-In Debug Console ---
+
 class DebugConsole(ctk.CTkToplevel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -44,7 +44,7 @@ class VPNClientApp(ctk.CTk):
         self.waiting_response = False
         self.timeout_id = None
         
-        # --- Track the VPN subprocess globally ---
+        #Track the VPN subprocess
         self.active_vpn_process = None
         self.connected_server = None  
         self.debug_window = None
@@ -71,14 +71,14 @@ class VPNClientApp(ctk.CTk):
 
         self.show_frame("ConnectingPage")
 
-    # ---------------- Frame Navigation ---------------- #
+    #frame nav
     def show_frame(self, page_name):
         self.current_frame_name = page_name
         frame = self.frames[page_name]
         frame.clear_fields()
         frame.tkraise()
 
-    # ---------------- Network / Timeout Handling ---------------- #
+    #timeout handle
     def connection_successful(self):
         self.show_frame("HomePage")
 
@@ -103,7 +103,7 @@ class VPNClientApp(ctk.CTk):
     def handle_incoming(self, data):
         self.after(0, self.process_incoming, data)
 
-    # ---------------- Dictionary Dispatcher ---------------- #
+    
     def handle_login_success(self, data):
         self.current_user = data.get("username", self.current_user)
         self.session_token = data.get("token")
@@ -147,7 +147,7 @@ class VPNClientApp(ctk.CTk):
         cmd = data.get("cmd")
         commands.get(cmd, self.handle_error)(data)
 
-    # ---------------- VPN Subprocess Control ---------------- #
+    #vpn subprocses
     def start_vpn(self, srv, show_console=False):
         """Launches the VPN client subprocess and captures its output internally."""
         self.stop_vpn(switch_page=False) 
@@ -196,7 +196,7 @@ class VPNClientApp(ctk.CTk):
                     stats_str = line.replace("[STATS]", "").strip()
                     rx_str, tx_str = stats_str.split(",")
                     
-                    # Simply update the main registers quietly
+                    #update the main registers quietly
                     self.total_bytes_rx = int(rx_str)
                     self.total_bytes_tx = int(tx_str)
                 except Exception as e:
@@ -247,10 +247,10 @@ class VPNClientApp(ctk.CTk):
         return_code = self.active_vpn_process.poll()
         
         if return_code is not None:
-            # The process died! (Timeout triggered SIGINT, or the server crashed)
+            # The process died
             print(f"[GUI] VPN Process terminated unexpectedly (Code {return_code}).")
             
-            # Optional: Tell the user what happened
+            
             messagebox.showwarning("VPN Disconnected", "The connection to the VPN server was lost.")
             
             # Your existing stop_vpn method handles the rest (cleaning up and switching to VPNPage)
@@ -289,7 +289,7 @@ class VPNClientApp(ctk.CTk):
             self.show_frame("VPNPage")
 
 
-# ---------------- Pages ---------------- #
+#pages:
 class BasePage(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
@@ -420,7 +420,7 @@ class VPNPage(BasePage):
     def __init__(self, parent, controller):
         super().__init__(parent, controller)
         
-        # --- Top Navigation Bar ---
+        #nav bar
         self.nav_bar = ctk.CTkFrame(self, height=50, fg_color="transparent")
         self.nav_bar.pack(fill="x", padx=20, pady=10)
 
@@ -440,7 +440,7 @@ class VPNPage(BasePage):
                                                 variable=self.show_console_var)
         self.console_checkbox.pack(side="right", padx=15)
 
-        # --- Dropdown Profile Menu ---
+        #drop down menu
         self.menu_visible = False
         self.menu_frame = ctk.CTkFrame(self, width=150, corner_radius=10, border_width=1, border_color="gray30")
         
@@ -451,7 +451,7 @@ class VPNPage(BasePage):
                                         fg_color="#C62828", hover_color="#B71C1C", width=100)
         self.logoff_btn.pack(pady=(5, 10), padx=15)
 
-        # --- Server List Area ---
+        #servers list
         self.server_frame = ctk.CTkScrollableFrame(self)
         self.server_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
         
@@ -540,7 +540,7 @@ class ConnectedPage(BasePage):
     def __init__(self, parent, controller):
         super().__init__(parent, controller)
         
-        # --- Top Navigation Bar ---
+        #nav bar
         self.nav_bar = ctk.CTkFrame(self, height=50, fg_color="transparent")
         self.nav_bar.pack(fill="x", padx=20, pady=10)
 
@@ -551,7 +551,7 @@ class ConnectedPage(BasePage):
                                       font=("Arial", 20), command=self.toggle_menu)
         self.user_btn.pack(side="right")
 
-        # --- Dropdown Profile Menu ---
+        
         self.menu_visible = False
         self.menu_frame = ctk.CTkFrame(self, width=150, corner_radius=10, border_width=1, border_color="gray30")
         
@@ -568,7 +568,7 @@ class ConnectedPage(BasePage):
         self.ul_label = ctk.CTkLabel(self, text="Upload: 0.00 KB/s", font=("Arial", 16, "bold"), text_color="#3498db")
         self.ul_label.pack(pady=5)
 
-        # --- Center Dashboard Content ---
+        
         self.center_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.center_frame.pack(expand=True)
 
@@ -592,7 +592,6 @@ class ConnectedPage(BasePage):
         Samples total historical data against elapsed system time 
         to calculate accurate, smooth network bandwidth rates in Megabits (Mbps).
         """
-        import time
         current_time = time.time()
         elapsed = current_time - self.controller.last_stats_time
         
@@ -605,11 +604,10 @@ class ConnectedPage(BasePage):
         rx_delta = current_rx - self.controller.last_rx_count
         tx_delta = current_tx - self.controller.last_tx_count
         
-        # --- THE FIX: Multiply by 8 to convert Bytes per second to Bits per second ---
+        #Multiply by 8 to convert Bytes per second to Bits per second
         rx_speed_bits = (rx_delta / elapsed) * 8
         tx_speed_bits = (tx_delta / elapsed) * 8
         
-        # Repaint UI elements using the new bit-based formatter
         self.dl_label.configure(text=f"Download: {self.format_bits(rx_speed_bits)}")
         self.ul_label.configure(text=f"Upload: {self.format_bits(tx_speed_bits)}")
         
@@ -651,7 +649,7 @@ class ConnectedPage(BasePage):
         if self.controller.connected_server:
             self.server_name_label.configure(text=self.controller.connected_server.get("name", "Unknown Server"))
             
-        # --- Start the isolated recurring UI clock cycle ---
+        
         self.controller.last_stats_time = time.time()
         self.controller.last_rx_count = self.controller.total_bytes_rx
         self.controller.last_tx_count = self.controller.total_bytes_tx

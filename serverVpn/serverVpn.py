@@ -22,7 +22,6 @@ client_ciphers: Dict[Tuple[str, int], VpnCipher] = {}
 ip_to_addr_map: Dict[str, Tuple[str, int]] = {}
 addr_to_ip_map = {}
 
-# Instantly generate X25519 keys
 SERVER_PRIVATE_KEY, SERVER_PUBLIC_BYTES = KeyGenerator.generate_x25519_keypair()
 
 pending_verifications = {}
@@ -91,11 +90,11 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
         if len(data) < 4: return
         msg_code = data[:4]
 
-        # 1. Handshake Phase
+        #Handshake Phase
         if msg_code == b"GETK":
             asyncio.create_task(self.handle_getk(data, addr))
         
-        # 2. IP Assignment Phase (If your client requests one)
+        #IP Assignment Phase (If your client requests one)
         elif msg_code == b"GETI":
             if addr not in client_ciphers: return
             
@@ -115,7 +114,7 @@ class ServerDatagramProtocol(asyncio.DatagramProtocol):
             self.transport.sendto(b"IP__" + encrypted_ip, addr)
             logging.info(f"Assigned/Confirmed IP {ip} for {addr}")
 
-        # 3. Encrypted Data Traffic
+        #Encrypted Data Traffic
         else:
             if addr not in client_ciphers:
                 return 
@@ -310,6 +309,7 @@ def connect_to_server(addr):
             return secure
     except Exception as e:
         print(f"[VPN-SERVER] Connection failed: {e}")
+
 
 if __name__ == "__main__":
     if (len(sys.argv)) != 3:
